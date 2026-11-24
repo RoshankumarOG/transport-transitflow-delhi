@@ -1,288 +1,507 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Delhi Transit Router — Bus + Metro</title>
+  <title>Delhi TransitFlow — Bus, Metro & Multi-Modal Router</title>
   <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
     * { box-sizing: border-box; }
-    body { margin: 0; font-family: system-ui, -apple-system, sans-serif; display: flex; height: 100vh; background: #0f172a; }
-    #sidebar { width: 380px; padding: 18px; background: #111827; color: #f9fafb; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; height: 100vh; background: #0b1120; color: #f8fafc; }
+    #sidebar { width: 420px; padding: 20px; background: #0f172a; border-right: 1px solid #1e293b; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
     #map { flex: 1; }
 
-    h2 { margin: 0 0 4px; font-size: 20px; }
-    .subtitle { font-size: 12px; color: #6b7280; margin-bottom: 8px; }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .brand h1 { margin: 0; font-size: 20px; font-weight: 800; letter-spacing: -0.5px; background: linear-gradient(135deg, #60a5fa, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .brand-sub { font-size: 12px; color: #94a3b8; }
 
-    label { font-size: 12px; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.5px; }
-    select, input { width: 100%; padding: 9px 10px; border-radius: 6px; border: 1px solid #374151; background: #1f2937; color: white; font-size: 14px; }
-    .row { display: flex; gap: 8px; }
-    .row > * { flex: 1; }
+    .section-label { font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; }
 
-    button { width: 100%; padding: 11px; background: #2563eb; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px; transition: background 0.2s; }
-    button:hover { background: #1d4ed8; }
-    .btn-secondary { background: #374151; }
-    .btn-secondary:hover { background: #4b5563; }
+    /* Segmented Mode Control */
+    .mode-selector { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; background: #1e293b; padding: 4px; border-radius: 10px; }
+    .mode-btn { background: transparent; border: none; padding: 10px 4px; color: #94a3b8; font-size: 12px; font-weight: 600; border-radius: 8px; cursor: pointer; transition: all 0.2s; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+    .mode-btn .icon { font-size: 18px; }
+    .mode-btn:hover { color: #f8fafc; background: rgba(255,255,255,0.05); }
+    .mode-btn.active { background: #2563eb; color: #ffffff; box-shadow: 0 4px 12px rgba(37,99,235,0.35); }
 
-    .option-card { background: #1f2937; padding: 12px 14px; border-radius: 10px; border: 1px solid #374151; cursor: pointer; transition: all 0.2s; }
-    .option-card:hover, .option-card.active { border-color: #3b82f6; background: #1e3a5f; }
-    .option-header { display: flex; justify-content: space-between; align-items: center; }
-    .option-title { font-weight: 700; font-size: 15px; }
-    .option-eta { font-size: 22px; font-weight: 800; color: #3b82f6; }
-    .option-meta { font-size: 12px; color: #9ca3af; margin-top: 4px; }
-    .tag { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: 700; margin-right: 4px; }
-    .tag-fastest { background: #064e3b; color: #34d399; }
-    .tag-cheapest { background: #78350f; color: #fbbf24; }
+    /* Segmented Optimization Control */
+    .optimize-selector { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; background: #1e293b; padding: 4px; border-radius: 10px; }
+    .opt-btn { background: transparent; border: none; padding: 9px 8px; color: #94a3b8; font-size: 13px; font-weight: 600; border-radius: 8px; cursor: pointer; transition: all 0.2s; display: flex; justify-content: center; align-items: center; gap: 6px; }
+    .opt-btn:hover { color: #f8fafc; background: rgba(255,255,255,0.05); }
+    .opt-btn.active { background: #3b82f6; color: #ffffff; box-shadow: 0 2px 8px rgba(59,130,246,0.3); }
 
-    .fare-box { background: #064e3b; padding: 10px 12px; border-radius: 8px; margin-top: 6px; }
-    .fare-row { display: flex; justify-content: space-between; font-size: 13px; }
-    .fare-label { color: #6ee7b7; }
-    .fare-value { color: #34d399; font-weight: 700; }
+    /* Presets */
+    .presets-row { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
+    .preset-pill { background: #1e293b; border: 1px solid #334155; padding: 5px 9px; font-size: 11px; border-radius: 20px; color: #cbd5e1; cursor: pointer; white-space: nowrap; transition: all 0.2s; }
+    .preset-pill:hover { border-color: #60a5fa; color: #ffffff; background: #283548; }
 
-    .leg { background: #1f2937; padding: 10px 12px; border-radius: 8px; margin-top: 6px; font-size: 13px; border-left: 4px solid #10b981; }
+    /* Inputs */
+    input[type="datetime-local"] { width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid #334155; background: #1e293b; color: white; font-size: 13px; }
+
+    /* Action Buttons */
+    .btn-row { display: flex; gap: 8px; }
+    button.action-btn { flex: 1; padding: 10px; background: #2563eb; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 13px; transition: background 0.2s; }
+    button.action-btn:hover { background: #1d4ed8; }
+    button.btn-reset { width: 80px; background: #334155; color: #cbd5e1; border: none; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600; }
+    button.btn-reset:hover { background: #475569; color: white; }
+
+    /* Status Banner */
+    .status-box { background: #1e293b; border: 1px dashed #475569; padding: 10px 12px; border-radius: 8px; font-size: 12px; color: #94a3b8; display: flex; align-items: center; gap: 8px; }
+    .status-box.active { border-color: #3b82f6; background: rgba(59,130,246,0.1); color: #93c5fd; }
+
+    /* Comparison Cards */
+    .cards-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
+    .route-card { background: #1e293b; border: 2px solid #334155; border-radius: 10px; padding: 12px; cursor: pointer; transition: all 0.2s; position: relative; }
+    .route-card:hover { border-color: #60a5fa; transform: translateY(-1px); }
+    .route-card.selected { border-color: #3b82f6; background: #1e3a5f; box-shadow: 0 4px 14px rgba(37,99,235,0.25); }
+
+    .card-badge { display: inline-block; font-size: 10px; font-weight: 800; padding: 2px 6px; border-radius: 4px; margin-bottom: 6px; }
+    .badge-fastest { background: #065f46; color: #34d399; }
+    .badge-cheapest { background: #78350f; color: #fbbf24; }
+
+    .card-eta { font-size: 24px; font-weight: 800; color: #f8fafc; line-height: 1; }
+    .card-eta span { font-size: 12px; font-weight: 500; color: #94a3b8; }
+    .card-fare { font-size: 15px; font-weight: 700; color: #34d399; margin-top: 4px; }
+    .card-transfers { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+
+    /* Details Panel */
+    .fare-breakdown { background: #064e3b; border: 1px solid #059669; border-radius: 8px; padding: 10px 12px; font-size: 12px; margin-top: 6px; }
+    .fare-item { display: flex; justify-content: space-between; margin-bottom: 3px; }
+    .fare-item:last-child { margin-bottom: 0; }
+    .fare-total { font-weight: 800; font-size: 14px; color: #6ee7b7; border-top: 1px solid #047857; padding-top: 4px; margin-top: 4px; }
+
+    .leg { background: #1e293b; padding: 10px 12px; border-radius: 8px; margin-top: 6px; font-size: 13px; border-left: 4px solid #3b82f6; }
     .leg.metro { border-left-color: #a855f7; }
-    .leg.walk { border-left-color: #6b7280; }
-    .leg.transfer { border-left-color: #f59e0b; }
-
-    .leg-icon { font-size: 16px; margin-right: 6px; }
-    .leg-dur { float: right; color: #9ca3af; font-size: 12px; }
-
-    .divider { border-top: 1px solid #1f2937; margin: 6px 0; }
-
-    #instructions { font-size: 13px; color: #9ca3af; line-height: 1.5; }
+    .leg.bus { border-left-color: #3b82f6; }
+    .leg.walk { border-left-color: #64748b; }
+    .leg-top { display: flex; justify-content: space-between; font-weight: 700; }
+    .leg-stops { font-size: 12px; color: #94a3b8; margin-top: 3px; }
+    .cong-badge { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; margin-left: 6px; }
+    .cong-free_flow { background: #065f46; color: #34d399; }
+    .cong-moderate { background: #78350f; color: #fbbf24; }
+    .cong-heavy { background: #7f1d1d; color: #f87171; }
   </style>
 </head>
 <body>
   <div id="sidebar">
+    <div class="brand">
+      <span style="font-size:26px">🚌🚇</span>
+      <div>
+        <h1>Delhi TransitFlow</h1>
+        <div class="brand-sub">Real-Time Bus • Delhi Metro • Smart Intermodal</div>
+      </div>
+    </div>
+
+    <!-- Quick Corridor Presets -->
     <div>
-      <h2>🚌🚇 Delhi Transit Router</h2>
-      <div class="subtitle">Bus + Metro • Fastest / Cheapest / Fewest Transfers</div>
-    </div>
-
-    <div id="instructions">
-      Click the map to set <b style="color:#3b82f6">Origin</b>, click again for <b style="color:#ef4444">Destination</b>.
-    </div>
-
-    <label>Departure Time</label>
-    <input type="datetime-local" id="depTime" value="2026-11-24T09:15" />
-
-    <div class="row">
-      <div>
-        <label>Mode</label>
-        <select id="modeSelect">
-          <option value="mixed" selected>🚌+🚇 Mixed</option>
-          <option value="bus">🚌 Bus Only</option>
-          <option value="metro">🚇 Metro Only</option>
-        </select>
-      </div>
-      <div>
-        <label>Optimize</label>
-        <select id="optimizeSelect">
-          <option value="fastest" selected>⚡ Fastest</option>
-          <option value="cheapest">💰 Cheapest</option>
-          <option value="least_transfers">🔄 Fewest Transfers</option>
-        </select>
+      <div class="section-label">Quick Corridors</div>
+      <div class="presets-row">
+        <div class="preset-pill" onclick="loadPreset('kashmiri_nehru')">📍 Kashmiri Gate ➔ Nehru Place</div>
+        <div class="preset-pill" onclick="loadPreset('cp_hauzkhas')">📍 Connaught Pl ➔ Hauz Khas</div>
+        <div class="preset-pill" onclick="loadPreset('ito_nehru')">📍 ITO ➔ Nehru Place</div>
       </div>
     </div>
 
-    <div class="row">
-      <button onclick="compareAll()">Compare All Options</button>
-      <button class="btn-secondary" onclick="resetPoints()">Reset</button>
+    <!-- Step 1: Mode Selection -->
+    <div>
+      <div class="section-label">1. Choose Transit Mode</div>
+      <div class="mode-selector">
+        <button class="mode-btn" id="btn-mode-metro" onclick="setMode('metro')">
+          <span class="icon">🚇</span>
+          <span>Metro Only</span>
+        </button>
+        <button class="mode-btn" id="btn-mode-bus" onclick="setMode('bus')">
+          <span class="icon">🚌</span>
+          <span>Bus Only</span>
+        </button>
+        <button class="mode-btn active" id="btn-mode-mixed" onclick="setMode('mixed')">
+          <span class="icon">🚌+🚇</span>
+          <span>Bus + Metro</span>
+        </button>
+      </div>
     </div>
 
-    <div id="options"></div>
-    <div id="detail"></div>
+    <!-- Step 2: Optimization Selection -->
+    <div>
+      <div class="section-label">2. Optimization Preference</div>
+      <div class="optimize-selector">
+        <button class="opt-btn active" id="btn-opt-fastest" onclick="setOptimize('fastest')">
+          <span>⚡ Fastest Way</span>
+        </button>
+        <button class="opt-btn" id="btn-opt-cheapest" onclick="setOptimize('cheapest')">
+          <span>💰 Cheapest Way</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Departure Time -->
+    <div>
+      <div class="section-label">Departure Time</div>
+      <input type="datetime-local" id="depTime" value="2026-11-24T09:15" />
+    </div>
+
+    <!-- Actions -->
+    <div class="btn-row">
+      <button class="action-btn" onclick="planSelectedRoute()">Find Route</button>
+      <button class="action-btn" style="background:#475569" onclick="compareAllModes()">Compare All 3</button>
+      <button class="btn-reset" onclick="resetAll()">Reset</button>
+    </div>
+
+    <!-- Status / Prompt -->
+    <div id="statusBox" class="status-box">
+      <span>📍</span>
+      <span id="statusText">Click map to set <b>Origin</b>, then click again for <b>Destination</b>.</span>
+    </div>
+
+    <!-- Mode Comparison Cards -->
+    <div id="comparisonSection" style="display:none">
+      <div class="section-label" id="comparisonLabel">Route Options</div>
+      <div class="cards-grid" id="cardsGrid"></div>
+    </div>
+
+    <!-- Detailed Itinerary -->
+    <div id="detailSection"></div>
   </div>
+
   <div id="map"></div>
 
   <script>
     const API = 'http://127.0.0.1:8000';
     const map = L.map('map').setView([28.6139, 77.2090], 12);
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; OSM contributors'
+      attribution: '&copy; OpenStreetMap & CARTO'
     }).addTo(map);
 
-    let origin = null, dest = null, markers = [], routeLines = [], overlayLayers = L.layerGroup().addTo(map);
-    let allOptions = [];
+    let origin = null, dest = null;
+    let markers = [];
+    let routeLayers = [];
+    let overlayLayers = L.layerGroup().addTo(map);
 
-    // ── Load metro lines + stations + bus congestion overlay ──
-    async function loadOverlays() {
-      overlayLayers.clearLayers();
-      const hour = new Date(document.getElementById('depTime').value).getHours();
+    let currentMode = 'mixed';       // 'metro' | 'bus' | 'mixed'
+    let currentOptimize = 'fastest'; // 'fastest' | 'cheapest'
+    let currentComparison = null;    // { fastest: ..., cheapest: ... }
 
-      // Bus congestion
-      try {
-        const busRes = await fetch(`${API}/segments-status?hour=${hour}`);
-        const segs = await busRes.json();
-        const colors = { free_flow: '#10b981', moderate: '#f59e0b', heavy: '#ef4444' };
-        segs.forEach(s => {
-          L.polyline([[s.stop_lat_from, s.stop_lon_from], [s.stop_lat_to, s.stop_lon_to]], {
-            color: colors[s.congestion] || '#10b981', weight: 3, opacity: 0.5
-          }).bindPopup(`🚌 ${s.route_short_name}: ${s.pred_speed_kmph.toFixed(1)} km/h (${s.congestion})`)
-            .addTo(overlayLayers);
-        });
-      } catch(e) {}
+    // ── Pre-defined corridor coordinates ──
+    const PRESETS = {
+      kashmiri_nehru: { orig: [28.6675, 77.2282, "Kashmiri Gate ISBT"], dest: [28.5491, 77.2533, "Nehru Place"] },
+      cp_hauzkhas:    { orig: [28.6315, 77.2167, "Connaught Place"],   dest: [28.5494, 77.2001, "Hauz Khas"] },
+      ito_nehru:      { orig: [28.6289, 77.2405, "ITO"],               dest: [28.5491, 77.2533, "Nehru Place"] }
+    };
 
-      // Metro lines
-      try {
-        const metroRes = await fetch(`${API}/metro-lines`);
-        const lines = await metroRes.json();
-        lines.forEach(line => {
-          line.segments.forEach(seg => {
-            L.polyline([seg.from, seg.to], {
-              color: line.color, weight: 4, opacity: 0.7, dashArray: '8 4'
-            }).bindPopup(`🚇 ${line.name}: ${seg.station_from} → ${seg.station_to}`)
-              .addTo(overlayLayers);
-          });
-        });
-      } catch(e) {}
+    function loadPreset(key) {
+      const p = PRESETS[key];
+      resetAll();
+      origin = L.latLng(p.orig[0], p.orig[1]);
+      dest = L.latLng(p.dest[0], p.dest[1]);
 
-      // Metro stations
-      try {
-        const stRes = await fetch(`${API}/metro-stations`);
-        const stations = await stRes.json();
-        const lineColors = { Yellow: '#FFD700', Violet: '#8B008B', Blue: '#1E90FF', Magenta: '#FF00FF' };
-        stations.forEach(st => {
-          L.circleMarker([st.stop_lat, st.stop_lon], {
-            radius: 4, fillColor: lineColors[st.line] || '#888', color: '#fff', weight: 1, fillOpacity: 0.9
-          }).bindPopup(`🚇 ${st.station_name} (${st.line} Line)`)
-            .addTo(overlayLayers);
-        });
-      } catch(e) {}
+      markers.push(L.marker(origin).addTo(map).bindPopup("📍 " + p.orig[2]).openPopup());
+      markers.push(L.marker(dest).addTo(map).bindPopup("🏁 " + p.dest[2]));
+
+      updateStatus(`Selected: ${p.orig[2]} ➔ ${p.dest[2]}`);
+      planSelectedRoute();
     }
 
-    // ── Map click handler ──
-    map.on('click', async (e) => {
+    // ── Mode Switcher ──
+    function setMode(mode) {
+      currentMode = mode;
+      document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById(`btn-mode-${mode}`).classList.add('active');
+
+      if (origin && dest) {
+        planSelectedRoute();
+      }
+    }
+
+    // ── Optimize Switcher ──
+    function setOptimize(opt) {
+      currentOptimize = opt;
+      document.querySelectorAll('.opt-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById(`btn-opt-${opt}`).classList.add('active');
+
+      if (currentComparison && currentComparison[opt]) {
+        selectRoute(currentComparison[opt], opt);
+      } else if (origin && dest) {
+        planSelectedRoute();
+      }
+    }
+
+    // ── Map Click ──
+    map.on('click', (e) => {
       if (!origin) {
         origin = e.latlng;
-        markers.push(L.marker(origin, {}).addTo(map).bindPopup("📍 Origin").openPopup());
+        markers.push(L.marker(origin).addTo(map).bindPopup("📍 Origin").openPopup());
+        updateStatus("Origin set. Now click on destination.");
       } else if (!dest) {
         dest = e.latlng;
-        markers.push(L.marker(dest, {}).addTo(map).bindPopup("🏁 Destination").openPopup());
-        await planSingle();
+        markers.push(L.marker(dest).addTo(map).bindPopup("🏁 Destination").openPopup());
+        updateStatus("Routing with selected options...");
+        planSelectedRoute();
       }
     });
 
-    // ── Single route plan ──
-    async function planSingle() {
-      const mode = document.getElementById('modeSelect').value;
-      const optimize = document.getElementById('optimizeSelect').value;
-
-      const res = await fetch(`${API}/plan-journey`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          origin_lat: origin.lat, origin_lng: origin.lng,
-          dest_lat: dest.lat, dest_lng: dest.lng,
-          departure_time: document.getElementById('depTime').value,
-          mode, optimize
-        })
-      });
-      const data = await res.json();
-      if (data.error) {
-        document.getElementById('detail').innerHTML = `<p style="color:#ef4444;">${data.error}</p>`;
-        return;
-      }
-      showRoute(data);
-      showDetail(data);
+    function updateStatus(txt) {
+      const box = document.getElementById('statusBox');
+      const label = document.getElementById('statusText');
+      label.innerHTML = txt;
+      box.classList.add('active');
     }
 
-    // ── Compare all options ──
-    async function compareAll() {
-      if (!origin || !dest) { alert('Click the map to set origin and destination first!'); return; }
+    // ── Fetch Comparison (Fastest + Cheapest for chosen mode) ──
+    async function planSelectedRoute() {
+      if (!origin || !dest) {
+        alert("Please click on the map to set Origin and Destination!");
+        return;
+      }
 
+      updateStatus("Calculating routes...");
+      try {
+        const res = await fetch(`${API}/plan-mode-comparison`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            origin_lat: origin.lat,
+            origin_lng: origin.lng,
+            dest_lat: dest.lat,
+            dest_lng: dest.lng,
+            departure_time: document.getElementById('depTime').value,
+            mode: currentMode
+          })
+        });
+
+        const data = await res.json();
+        currentComparison = data;
+
+        if (!data.fastest && !data.cheapest) {
+          document.getElementById('detailSection').innerHTML = `<p style="color:#ef4444;font-size:13px">No valid route found for ${currentMode.toUpperCase()}. Try switching mode or moving pins closer to transit.</p>`;
+          return;
+        }
+
+        renderComparisonCards(data);
+        const routeToShow = data[currentOptimize] || data.fastest || data.cheapest;
+        selectRoute(routeToShow, currentOptimize);
+
+      } catch (err) {
+        console.error(err);
+        updateStatus("Error contacting routing API. Ensure backend is running.");
+      }
+    }
+
+    // ── Render the 2 Cards (Fastest vs Cheapest) ──
+    function renderComparisonCards(comp) {
+      const grid = document.getElementById('cardsGrid');
+      const sec = document.getElementById('comparisonSection');
+      sec.style.display = 'block';
+
+      const modeLabel = { bus: "Bus", metro: "Metro", mixed: "Bus + Metro" }[currentMode];
+      document.getElementById('comparisonLabel').innerText = `${modeLabel} Route Options`;
+
+      grid.innerHTML = '';
+
+      ['fastest', 'cheapest'].forEach(opt => {
+        const r = comp[opt];
+        if (!r) return;
+
+        const isSelected = (opt === currentOptimize);
+        const badgeClass = opt === 'fastest' ? 'badge-fastest' : 'badge-cheapest';
+        const badgeText = opt === 'fastest' ? '⚡ FASTEST' : '💰 CHEAPEST';
+
+        const fareText = r.fare.total_fare_min === r.fare.total_fare_max 
+          ? `₹${r.fare.total_fare_min}` 
+          : `₹${r.fare.total_fare_min} – ₹${r.fare.total_fare_max}`;
+
+        const card = document.createElement('div');
+        card.className = `route-card ${isSelected ? 'selected' : ''}`;
+        card.id = `card-${opt}`;
+        card.onclick = () => {
+          setOptimize(opt);
+          selectRoute(r, opt);
+        };
+
+        card.innerHTML = `
+          <span class="card-badge ${badgeClass}">${badgeText}</span>
+          <div class="card-eta">${r.total_eta_min} <span>min</span></div>
+          <div class="card-fare">${fareText}</div>
+          <div class="card-transfers">${r.transfers} transfer(s)</div>
+        `;
+        grid.appendChild(card);
+      });
+    }
+
+    // ── Select and Display Specific Route ──
+    function selectRoute(route, optKey) {
+      document.querySelectorAll('.route-card').forEach(c => c.classList.remove('selected'));
+      const activeCard = document.getElementById(`card-${optKey}`);
+      if (activeCard) activeCard.classList.add('selected');
+
+      // Draw polyline
+      routeLayers.forEach(l => map.removeLayer(l));
+      routeLayers = [];
+
+      if (route.polyline && route.polyline.length) {
+        const poly = L.polyline(route.polyline, {
+          color: optKey === 'cheapest' ? '#10b981' : '#3b82f6',
+          weight: 6,
+          opacity: 0.95
+        }).addTo(map);
+        routeLayers.push(poly);
+        map.fitBounds(poly.getBounds().pad(0.2));
+      }
+
+      // Render Details
+      renderItinerary(route);
+      updateStatus(`Showing <b>${optKey.toUpperCase()}</b> route: ${route.total_eta_min} min • ₹${route.fare.total_fare_min}`);
+    }
+
+    // ── Compare All 3 Modes Simultaneously ──
+    async function compareAllModes() {
+      if (!origin || !dest) {
+        alert("Please set Origin and Destination first!");
+        return;
+      }
+      updateStatus("Comparing Bus vs Metro vs Mixed...");
       const res = await fetch(`${API}/plan-all-options`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          origin_lat: origin.lat, origin_lng: origin.lng,
-          dest_lat: dest.lat, dest_lng: dest.lng,
+          origin_lat: origin.lat,
+          origin_lng: origin.lng,
+          dest_lat: dest.lat,
+          dest_lng: dest.lng,
           departure_time: document.getElementById('depTime').value
         })
       });
       const data = await res.json();
-      allOptions = data.options || [];
-      showOptions(allOptions);
-      if (allOptions.length > 0) {
-        showRoute(allOptions[0]);
-        showDetail(allOptions[0]);
+      const options = data.options || [];
+
+      const sec = document.getElementById('comparisonSection');
+      sec.style.display = 'block';
+      document.getElementById('comparisonLabel').innerText = "All 3 Modes Compared";
+
+      const grid = document.getElementById('cardsGrid');
+      grid.style.gridTemplateColumns = options.length === 3 ? "1fr 1fr 1fr" : "1fr 1fr";
+      grid.innerHTML = '';
+
+      options.forEach((opt, idx) => {
+        const card = document.createElement('div');
+        card.className = `route-card ${idx === 0 ? 'selected' : ''}`;
+        const tags = (opt.tags || []).join(' ');
+        card.onclick = () => {
+          document.querySelectorAll('.route-card').forEach(c => c.classList.remove('selected'));
+          card.classList.add('selected');
+          selectRoute(opt, 'fastest');
+        };
+        card.innerHTML = `
+          <div style="font-size:11px;font-weight:700;color:#94a3b8">${opt.option_label}</div>
+          <div class="card-eta" style="margin-top:4px">${opt.total_eta_min} <span>min</span></div>
+          <div class="card-fare">₹${opt.fare.total_fare_min}</div>
+          <div style="font-size:10px;color:#38bdf8;margin-top:2px">${tags}</div>
+        `;
+        grid.appendChild(card);
+      });
+
+      if (options.length) {
+        selectRoute(options[0], 'fastest');
       }
     }
 
-    function showOptions(options) {
-      const el = document.getElementById('options');
-      if (!options.length) { el.innerHTML = '<p style="color:#ef4444;">No routes found.</p>'; return; }
+    // ── Itinerary Details ──
+    function renderItinerary(route) {
+      const container = document.getElementById('detailSection');
+      const f = route.fare;
 
-      el.innerHTML = options.map((opt, i) => {
-        const tags = (opt.tags || []).map(t =>
-          `<span class="tag ${t.includes('Fast') ? 'tag-fastest' : 'tag-cheapest'}">${t}</span>`
-        ).join('');
-        return `
-          <div class="option-card ${i === 0 ? 'active' : ''}" onclick="selectOption(${i})">
-            <div class="option-header">
-              <div>
-                <div class="option-title">${opt.option_label || opt.mode}</div>
-                <div class="option-meta">${opt.transfers} transfer(s) • ₹${opt.fare.total_fare_min}${opt.fare.total_fare_min !== opt.fare.total_fare_max ? '–₹' + opt.fare.total_fare_max : ''}</div>
-                <div style="margin-top:4px">${tags}</div>
-              </div>
-              <div class="option-eta">${opt.total_eta_min}<span style="font-size:12px;color:#9ca3af"> min</span></div>
-            </div>
-          </div>`;
-      }).join('');
-    }
-
-    function selectOption(i) {
-      document.querySelectorAll('.option-card').forEach((c, j) => c.classList.toggle('active', i === j));
-      showRoute(allOptions[i]);
-      showDetail(allOptions[i]);
-    }
-
-    function showRoute(data) {
-      routeLines.forEach(l => map.removeLayer(l));
-      routeLines = [];
-      if (data.polyline) {
-        const line = L.polyline(data.polyline, { color: '#3b82f6', weight: 6, opacity: 0.9 }).addTo(map);
-        routeLines.push(line);
-        map.fitBounds(line.getBounds().pad(0.15));
-      }
-    }
-
-    function showDetail(data) {
-      const el = document.getElementById('detail');
-      const f = data.fare;
-      el.innerHTML = `
-        <div class="divider"></div>
-        <h3 style="margin:8px 0 4px;">🕐 ${data.total_eta_min} min — ${data.transfers} transfer(s)</h3>
-        <div class="fare-box">
-          <div class="fare-row"><span class="fare-label">Total Fare</span><span class="fare-value">₹${f.total_fare_min}${f.total_fare_min !== f.total_fare_max ? ' – ₹' + f.total_fare_max : ''}</span></div>
-          ${f.metro_fare ? `<div class="fare-row"><span class="fare-label">🚇 Metro</span><span class="fare-value">₹${f.metro_fare} (${f.metro_distance_km} km)</span></div>` : ''}
-          ${f.bus_fare_non_ac ? `<div class="fare-row"><span class="fare-label">🚌 Bus (Non-AC / AC)</span><span class="fare-value">₹${f.bus_fare_non_ac} / ₹${f.bus_fare_ac}</span></div>` : ''}
+      let fareHtml = `
+        <div class="fare-breakdown">
+          <div class="fare-item"><span>🚇 Metro Fare</span><span>₹${f.metro_fare} (${f.metro_distance_km} km)</span></div>
+          <div class="fare-item"><span>🚌 Bus Fare (Non-AC / AC)</span><span>₹${f.bus_fare_non_ac} / ₹${f.bus_fare_ac}</span></div>
+          <div class="fare-item fare-total"><span>Total Commute Cost</span><span>₹${f.total_fare_min}${f.total_fare_min !== f.total_fare_max ? ' – ₹' + f.total_fare_max : ''}</span></div>
         </div>
-        ${data.legs.map(l => {
-          let cls = 'leg';
-          if (l.mode === 'metro') cls += ' metro';
-          else if (l.mode === 'walk') cls += (l.type.includes('transfer') || l.type.includes('interchange')) ? ' transfer' : ' walk';
-          return `<div class="${cls}">
-            <span class="leg-icon">${l.icon || ''}</span>
-            <b>${l.route}</b>
-            <span class="leg-dur">${l.duration_min} min</span><br/>
-            <span style="color:#9ca3af">${l.from_stop} → ${l.to_stop}</span>
-          </div>`;
-        }).join('')}`;
+      `;
+
+      let legsHtml = route.legs.map(l => {
+        let cls = 'leg ' + l.mode;
+        let congTag = '';
+        if (l.mode === 'bus' && l.congestion && l.congestion !== 'none') {
+          congTag = `<span class="cong-badge cong-${l.congestion}">${l.congestion.replace('_', ' ').toUpperCase()}</span>`;
+        }
+        return `
+          <div class="${cls}">
+            <div class="leg-top">
+              <span>${l.icon || ''} ${l.route}${congTag}</span>
+              <span style="color:#94a3b8">${l.duration_min} min</span>
+            </div>
+            <div class="leg-stops">${l.from_stop} ➔ ${l.to_stop}</div>
+          </div>
+        `;
+      }).join('');
+
+      container.innerHTML = `
+        <div style="margin-top:12px">
+          <div class="section-label">Commute Breakdown</div>
+          ${fareHtml}
+          ${legsHtml}
+        </div>
+      `;
     }
 
-    function resetPoints() {
-      origin = null; dest = null; allOptions = [];
+    function resetAll() {
+      origin = null; dest = null;
       markers.forEach(m => map.removeLayer(m));
       markers = [];
-      routeLines.forEach(l => map.removeLayer(l));
-      routeLines = [];
-      document.getElementById('options').innerHTML = '';
-      document.getElementById('detail').innerHTML = '';
+      routeLayers.forEach(l => map.removeLayer(l));
+      routeLayers = [];
+      document.getElementById('comparisonSection').style.display = 'none';
+      document.getElementById('detailSection').innerHTML = '';
+      updateStatus("Pins cleared. Click map to set <b>Origin</b>.");
     }
 
-    document.getElementById('depTime').addEventListener('change', loadOverlays);
-    loadOverlays();
+    // ── Load Overlays (Metro Network + Bus Congestion) ──
+    async function loadTransitOverlays() {
+      overlayLayers.clearLayers();
+      const hour = new Date(document.getElementById('depTime').value).getHours();
+
+      // Bus congestion segments
+      try {
+        const res = await fetch(`${API}/segments-status?hour=${hour}`);
+        const segs = await res.json();
+        const colors = { free_flow: '#10b981', moderate: '#f59e0b', heavy: '#ef4444' };
+        segs.forEach(s => {
+          L.polyline([[s.stop_lat_from, s.stop_lon_from], [s.stop_lat_to, s.stop_lon_to]], {
+            color: colors[s.congestion] || '#10b981', weight: 3, opacity: 0.45
+          }).bindPopup(`🚌 Bus ${s.route_short_name}: ${s.pred_speed_kmph.toFixed(1)} km/h (${s.congestion})`)
+            .addTo(overlayLayers);
+        });
+      } catch(e){}
+
+      // Metro Lines
+      try {
+        const res = await fetch(`${API}/metro-lines`);
+        const lines = await res.json();
+        lines.forEach(line => {
+          line.segments.forEach(seg => {
+            L.polyline([seg.from, seg.to], {
+              color: line.color, weight: 4, opacity: 0.65, dashArray: '6 4'
+            }).bindPopup(`🚇 ${line.name}: ${seg.station_from} ➔ ${seg.station_to}`)
+              .addTo(overlayLayers);
+          });
+        });
+      } catch(e){}
+
+      // Metro Stations
+      try {
+        const res = await fetch(`${API}/metro-stations`);
+        const stations = await res.json();
+        const colors = { Yellow: '#FFD700', Violet: '#8B008B', Blue: '#1E90FF', Magenta: '#FF00FF' };
+        stations.forEach(s => {
+          L.circleMarker([s.stop_lat, s.stop_lon], {
+            radius: 4, fillColor: colors[s.line] || '#fff', color: '#ffffff', weight: 1.5, fillOpacity: 0.95
+          }).bindPopup(`🚇 ${s.station_name} (${s.line} Line)`).addTo(overlayLayers);
+        });
+      } catch(e){}
+    }
+
+    document.getElementById('depTime').addEventListener('change', loadTransitOverlays);
+    loadTransitOverlays();
   </script>
 </body>
 </html>

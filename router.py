@@ -21,11 +21,11 @@ class TransitRouter:
         self.stop_lookup = {}
         for _, row in self.bus_stops_df.iterrows():
             self.stop_lookup[row["stop_id"]] = {
-                "stop_name": row["stop_name"], "stop_lat": row["stop_lat"], "stop_lon": row["stop_lon"]
+                "stop_name": row["stop_name"], "stop_lat": row["stop_lat"], "stop_lon": row["stop_lon"], "mode": "bus"
             }
         for _, row in self.metro_stations_df.iterrows():
             self.stop_lookup[row["station_id"]] = {
-                "stop_name": row["station_name"], "stop_lat": row["stop_lat"], "stop_lon": row["stop_lon"]
+                "stop_name": row["station_name"], "stop_lat": row["stop_lat"], "stop_lon": row["stop_lon"], "mode": "metro"
             }
 
         # Combined spatial index (bus stops + metro stations)
@@ -205,7 +205,6 @@ class TransitRouter:
 
     def _calculate_journey_fare(self, legs):
         """Calculate total fare from journey legs."""
-        total_fare = 0
         bus_fare_min = 0
         bus_fare_max = 0
         metro_total_dist_km = 0
@@ -216,7 +215,7 @@ class TransitRouter:
         for leg in legs:
             if leg["mode"] == "bus":
                 if leg.get("route_id") != current_bus_route:
-                    # New bus ride — settle previous bus fare
+                    # Settle previous bus segment
                     if current_bus_route is not None:
                         d_km = current_bus_dist_m / 1000.0
                         bus_fare_min += calculate_bus_fare(d_km, ac=False)
@@ -232,7 +231,6 @@ class TransitRouter:
                 in_metro = True
 
             elif leg["mode"] == "walk":
-                # If we were on a bus, settle the fare
                 if current_bus_route is not None and not in_metro:
                     d_km = current_bus_dist_m / 1000.0
                     bus_fare_min += calculate_bus_fare(d_km, ac=False)
@@ -268,12 +266,33 @@ class TransitRouter:
         dest_snaps = self.snap_point(dest_lat, dest_lng, mode=mode)
 
         if not orig_snaps or not dest_snaps:
-            return {"error": f"No {'bus stops' if mode == 'bus' else 'metro stations' if mode == 'metro' else 'stops/stations'} found within 1km."}
+            mode_name = 'Bus stops' if mode == 'bus' else 'Metro stations' if mode == 'metro' else 'Stops or stations'
+            return {"error": f"No {mode_name} found within 1km of origin or destination."}
 
-        # Choose weight function based on optimization goal
-        if optimize == "least_transfers":
+        # Weight function tailored to the optimization target
+        if optimize == "cheapest":
+            def weight_fn(u, v, d):
+                edge_mode = d.get("mode", "walk")
+                dist_m = d.get("distance_m", 0.0)
+                time_s = d.get("weight", 0.0)
+                if edge_mode == "walk":
+                    cost = 0.0
+                elif edge_mode == "bus":
+                    # Non-AC Bus is ₹5-₹15, approx ₹1.0 per km + ₹5 boarding penalty
+                    is_boarding = 5.0 if "transfer" in d.get("edge_type", "") else 0.0
+                    cost = (dist_m / 1000.0) * 1.0 + is_boarding
+                elif edge_mode == "metro":
+                    # Metro is ₹10-₹60, approx ₹3.5 per km + ₹10 base
+                    is_boarding = 10.0 if "interchange" in d.get("edge_type", "") or "to_metro" in d.get("edge_type", "") else 0.0
+                    cost = (dist_m / 1000.0) * 3.5 + is_boarding
+                else:
+                    cost = 0.0
+                # Cost is dominant (scaled x1000), time is tiebreaker
+                return (cost * 1000.0) + (time_s * 0.05)
+
+        elif optimize == "least_transfers":
             weight_fn = lambda u, v, d: d["weight"] + (3600 if "transfer" in d.get("edge_type", "") or "interchange" in d.get("edge_type", "") else 0)
-        else:
+        else:  # fastest
             weight_fn = "weight"
 
         # Connect virtual ORIGIN and DESTINATION nodes
@@ -301,7 +320,7 @@ class TransitRouter:
             path = nx.dijkstra_path(G, "ORIGIN", "DEST", weight=weight_fn)
         except nx.NetworkXNoPath:
             G.remove_nodes_from(["ORIGIN", "DEST"])
-            return {"error": "No valid route found between these points."}
+            return {"error": f"No valid {mode} route found between these points."}
 
         # Build step-by-step legs
         legs = []
@@ -331,6 +350,9 @@ class TransitRouter:
                 if "metro" in edge_type:
                     label = "Walk to/from Metro"
                     icon = "🚶"
+                elif "bus" in edge_type:
+                    label = "Walk to/from Bus"
+                    icon = "🚶"
                 else:
                     label = "Walk / Transfer"
                     icon = "🚶"
@@ -353,8 +375,6 @@ class TransitRouter:
 
         # Calculate fares
         fare_info = self._calculate_journey_fare(legs)
-
-        # Count modes used
         modes_used = list(set(l["mode"] for l in legs if l["mode"] != "walk"))
 
         return {
@@ -368,13 +388,31 @@ class TransitRouter:
             "mode": mode
         }
 
+    def plan_mode_comparison(self, scored_bus_segments_df, orig_lat, orig_lng, dest_lat, dest_lng, mode="mixed"):
+        """
+        For the user-selected mode (bus, metro, or mixed), calculates:
+        - ⚡ Fastest way
+        - 💰 Cheapest way
+        """
+        results = {}
+        for opt in ["fastest", "cheapest"]:
+            try:
+                G = self.build_graph(scored_bus_segments_df, mode=mode)
+                res = self.plan_journey(G, orig_lat, orig_lng, dest_lat, dest_lng, mode=mode, optimize=opt)
+                if "error" not in res:
+                    label_mode = {"bus": "Bus", "metro": "Metro", "mixed": "Bus + Metro"}.get(mode, mode)
+                    res["title"] = f"{'⚡ Fastest' if opt == 'fastest' else '💰 Cheapest'} {label_mode}"
+                    res["tag"] = "⚡ Fastest" if opt == "fastest" else "💰 Cheapest"
+                    results[opt] = res
+            except Exception:
+                continue
+        return results
+
     def plan_all_options(self, scored_bus_segments_df, orig_lat, orig_lng, dest_lat, dest_lng):
         """
-        Returns up to 3 route options: fastest bus, fastest metro, fastest mixed.
-        Each with fare info, so user can compare time vs cost.
+        Returns fastest routes across Bus, Metro, and Mixed modes with fares and tags.
         """
         options = []
-
         for plan_mode in ["bus", "metro", "mixed"]:
             try:
                 G = self.build_graph(scored_bus_segments_df, mode=plan_mode)
@@ -384,18 +422,16 @@ class TransitRouter:
                     result["option_label"] = {
                         "bus": "🚌 Bus Only",
                         "metro": "🚇 Metro Only",
-                        "mixed": "🚌+🚇 Best Mixed"
+                        "mixed": "🚌+🚇 Bus + Metro"
                     }[plan_mode]
                     options.append(result)
             except Exception:
                 continue
 
-        # Sort by ETA
         options.sort(key=lambda x: x["total_eta_min"])
-        # Tag fastest and cheapest
         if options:
-            options[0]["tags"] = options[0].get("tags", []) + ["⚡ Fastest"]
+            options[0]["tags"] = options[0].get("tags", []) + ["⚡ Fastest Overall"]
             cheapest = min(options, key=lambda x: x["fare"]["total_fare_min"])
-            cheapest["tags"] = cheapest.get("tags", []) + ["💰 Cheapest"]
+            cheapest["tags"] = cheapest.get("tags", []) + ["💰 Cheapest Overall"]
 
         return options

@@ -136,6 +136,20 @@ def plan_journey(req: JourneyRequest):
     )
     return result
 
+@app.post("/plan-mode-comparison")
+def plan_mode_comparison(req: JourneyRequest):
+    """
+    Returns both Fastest and Cheapest route options for the selected mode (bus, metro, or mixed).
+    """
+    dt = datetime.fromisoformat(req.departure_time)
+    scored_segments = eta_model.predict_segments(
+        segments_df, hour=dt.hour, day_of_week=dt.weekday(), live_speeds_map=live_speeds_cache
+    )
+    results = transit_router.plan_mode_comparison(
+        scored_segments, req.origin_lat, req.origin_lng, req.dest_lat, req.dest_lng, mode=req.mode
+    )
+    return results
+
 @app.post("/plan-all-options")
 def plan_all_options(req: JourneyRequest):
     """Returns bus-only, metro-only, and mixed route options with fares."""
