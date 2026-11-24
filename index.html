@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Delhi Bus Transit Router</title>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; display: flex; height: 100vh; }
+    #sidebar { width: 340px; padding: 16px; background: #111827; color: #f9fafb; overflow-y: auto; }
+    #map { flex: 1; }
+    button { width: 100%; padding: 10px; background: #2563eb; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; margin-top: 8px; }
+    select, input { width: 100%; padding: 8px; margin: 6px 0 12px; border-radius: 4px; border: 1px solid #374151; background: #1f2937; color: white; }
+    .leg { background: #1f2937; padding: 10px; border-radius: 6px; margin-top: 8px; border-left: 4px solid #10b981; font-size: 13px; }
+    .leg.transfer { border-left-color: #f59e0b; }
+  </style>
+</head>
+<body>
+  <div id="sidebar">
+    <h2>Delhi Bus ETA Planner</h2>
+    <p style="font-size: 13px; color: #9ca3af;">Click map to set <b>Origin</b>, click again for <b>Destination</b>.</p>
+    <label>Departure Time</label>
+    <input type="datetime-local" id="depTime" value="2026-11-24T09:15" />
+    <button onclick="resetPoints()">Reset Map Pins</button>
+    <div id="summary" style="margin-top: 16px;"></div>
+  </div>
+  <div id="map"></div>
+
+  <script>
+    const map = L.map('map').setView([28.6139, 77.2090], 12);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
+
+    let origin = null, dest = null, markers = [], routeLine = null, congestionLayer = L.layerGroup().addTo(map);
+
+    async function loadCongestionOverlay() {
+      congestionLayer.clearLayers();
+      const hour = new Date(document.getElementById('depTime').value).getHours();
+      const res = await fetch(`http://127.0.0.1:8000/segments-status?hour=${hour}`);
+      const segs = await res.json();
+      const colors = { free_flow: '#10b981', moderate: '#f59e0b', heavy: '#ef4444' };
+
+      segs.forEach(s => {
+        L.polyline([[s.stop_lat_from, s.stop_lon_from], [s.stop_lat_to, s.stop_lon_to]], {
+          color: colors[s.congestion] || '#10b981', weight: 4, opacity: 0.65
+        }).bindPopup(`Route ${s.route_short_name}: ${s.pred_speed_kmph.toFixed(1)} km/h (${s.congestion})`)
+          .addTo(congestionLayer);
+      });
+    }
+
+    map.on('click', async (e) => {
+      if (!origin) {
+        origin = e.latlng;
+        markers.push(L.marker(origin).addTo(map).bindPopup("Origin").openPopup());
+      } else if (!dest) {
+        dest = e.latlng;
+        markers.push(L.marker(dest).addTo(map).bindPopup("Destination").openPopup());
+        await planJourney();
+      }
+    });
+
+    async function planJourney() {
+      const res = await fetch('http://127.0.0.1:8000/plan-journey', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          origin_lat: origin.lat, origin_lng: origin.lng,
+          dest_lat: dest.lat, dest_lng: dest.lng,
+          departure_time: document.getElementById('depTime').value
+        })
+      });
+      const data = await res.json();
+      const summary = document.getElementById('summary');
+
+      if (data.error) {
+        summary.innerHTML = `<p style="color:#ef4444;">${data.error}</p>`;
+        return;
+      }
+
+      if (routeLine) map.removeLayer(routeLine);
+      routeLine = L.polyline(data.polyline, { color: '#3b82f6', weight: 6 }).addTo(map);
+
+      summary.innerHTML = `<h3>Total ETA: ${data.total_eta_min} mins (${data.transfers} transfers)</h3>` +
+        data.legs.map(l => `
+          <div class="leg ${l.type.includes('transfer') ? 'transfer' : ''}">
+            <b>${l.type === 'bus' ? 'Bus ' + l.route : 'Walk / Transfer'}</b> (${l.duration_min} min)<br/>
+            ${l.from_stop} → ${l.to_stop}
+          </div>
+        `).join('');
+    }
+
+    function resetPoints() {
+      origin = null; dest = null;
+      markers.forEach(m => map.removeLayer(m));
+      markers = [];
+      if (routeLine) map.removeLayer(routeLine);
+      document.getElementById('summary').innerHTML = '';
+    }
+
+    document.getElementById('depTime').addEventListener('change', loadCongestionOverlay);
+    loadCongestionOverlay();
+  </script>
+</body>
+</html>
