@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Optional
 
@@ -22,11 +23,8 @@ metro_stations_df = None
 metro_segments_df = None
 live_speeds_cache = {}
 
-def generate_sample_delhi_data():
-    """Creates realistic Delhi corridor GTFS + GPS logs if data/gtfs is missing."""
-    os.makedirs("data/gtfs", exist_ok=True)
-    os.makedirs("artifacts", exist_ok=True)
-
+def get_in_memory_sample_gtfs():
+    """Returns sample stops, routes, trips, and stop_times as DataFrames directly."""
     stops = pd.DataFrame([
         {"stop_id": 1, "stop_name": "Kashmiri Gate ISBT", "stop_lat": 28.6675, "stop_lon": 77.2282},
         {"stop_id": 2, "stop_name": "Red Fort", "stop_lat": 28.6562, "stop_lon": 77.2410},
@@ -59,50 +57,128 @@ def generate_sample_delhi_data():
         {"trip_id": "T3", "stop_id": 6, "stop_sequence": 3},
         {"trip_id": "T3", "stop_id": 7, "stop_sequence": 4},
     ])
-    stops.to_csv("data/gtfs/stops.txt", index=False)
-    routes.to_csv("data/gtfs/routes.txt", index=False)
-    trips.to_csv("data/gtfs/trips.txt", index=False)
-    stop_times.to_csv("data/gtfs/stop_times.txt", index=False)
+    return stops, routes, trips, stop_times
 
-    rng = np.random.default_rng(42)
-    rows = []
-    for hour in range(6, 23):
-        rush_factor = 1.65 if hour in [8, 9, 10, 17, 18, 19, 20] else 1.0
-        for dow in range(7):
-            for route_id, seq in [("R419", [1, 2, 3, 7]), ("R502", [4, 5, 6]), ("R764", [3, 4, 6, 7])]:
-                t = pd.Timestamp(f"2026-11-23 {hour:02d}:00:00") + pd.Timedelta(days=dow)
-                for sid in seq:
-                    s_row = stops[stops["stop_id"] == sid].iloc[0]
-                    rows.append({
-                        "vehicle_id": f"DL1PC_{route_id}_{hour}_{dow}",
-                        "route_id": route_id,
-                        "timestamp": t,
-                        "lat": s_row["stop_lat"],
-                        "lon": s_row["stop_lon"],
-                        "speed_kmph": 22.0 / rush_factor
+def generate_sample_delhi_data():
+    """Creates realistic Delhi corridor GTFS + GPS logs if data/gtfs is missing and writable."""
+    try:
+        os.makedirs("data/gtfs", exist_ok=True)
+        os.makedirs("artifacts", exist_ok=True)
+        stops, routes, trips, stop_times = get_in_memory_sample_gtfs()
+        stops.to_csv("data/gtfs/stops.txt", index=False)
+        routes.to_csv("data/gtfs/routes.txt", index=False)
+        trips.to_csv("data/gtfs/trips.txt", index=False)
+        stop_times.to_csv("data/gtfs/stop_times.txt", index=False)
+
+        rng = np.random.default_rng(42)
+        rows = []
+        for hour in range(6, 23):
+            rush_factor = 1.65 if hour in [8, 9, 10, 17, 18, 19, 20] else 1.0
+            for dow in range(7):
+                for route_id, seq in [("R419", [1, 2, 3, 7]), ("R502", [4, 5, 6]), ("R764", [3, 4, 6, 7])]:
+                    t = pd.Timestamp(f"2026-11-23 {hour:02d}:00:00") + pd.Timedelta(days=dow)
+                    for sid in seq:
+                        s_row = stops[stops["stop_id"] == sid].iloc[0]
+                        rows.append({
+                            "vehicle_id": f"DL1PC_{route_id}_{hour}_{dow}",
+                            "route_id": route_id,
+                            "timestamp": t,
+                            "lat": s_row["stop_lat"],
+                            "lon": s_row["stop_lon"],
+                            "speed_kmph": 22.0 / rush_factor
+                        })
+                        t += pd.Timedelta(minutes=float(rng.uniform(7, 12) * rush_factor))
+        pd.DataFrame(rows).to_csv("data/sample_gps.csv", index=False)
+    except OSError:
+        pass
+
+def ensure_initialized():
+    global transit_router, segments_df, metro_stations_df, metro_segments_df, eta_model
+    if transit_router is not None:
+        return
+
+    metro_stations_df, metro_segments_df, metro_interchanges = build_metro_network()
+
+    if os.path.exists("data/gtfs/stops.txt"):
+        stops_df, segments_df = build_segments_from_gtfs("data/gtfs")
+    else:
+        generate_sample_delhi_data()
+        if os.path.exists("data/gtfs/stops.txt"):
+            stops_df, segments_df = build_segments_from_gtfs("data/gtfs")
+        else:
+            # Fallback direct in-memory construction
+            stops, routes, trips, stop_times = get_in_memory_sample_gtfs()
+            canonical_trips = trips.drop_duplicates("route_id")[["trip_id", "route_id"]]
+            st = stop_times.merge(canonical_trips, on="trip_id").sort_values(["route_id", "stop_sequence"])
+            st = st.merge(routes[["route_id", "route_short_name"]], on="route_id")
+            st["next_stop_id"] = st.groupby("route_id")["stop_id"].shift(-1)
+            segs = st.dropna(subset=["next_stop_id"]).copy()
+            segs["next_stop_id"] = segs["next_stop_id"].astype(stops["stop_id"].dtype)
+            segs = segs.merge(stops[["stop_id", "stop_name", "stop_lat", "stop_lon"]], on="stop_id")
+            segs = segs.merge(
+                stops[["stop_id", "stop_name", "stop_lat", "stop_lon"]],
+                left_on="next_stop_id", right_on="stop_id", suffixes=("_from", "_to")
+            )
+            from data_pipeline import haversine_m
+            segs["distance_m"] = haversine_m(
+                segs["stop_lat_from"], segs["stop_lon_from"],
+                segs["stop_lat_to"], segs["stop_lon_to"]
+            )
+            segs["segment_id"] = (
+                segs["route_id"].astype(str) + "_" +
+                segs["stop_id_from"].astype(str) + "_" +
+                segs["stop_id_to"].astype(str)
+            )
+            stops_df, segments_df = stops, segs
+
+    # Initialize ETA model
+    if os.path.exists("artifacts/eta_model.joblib"):
+        try:
+            eta_model.load("artifacts/eta_model.joblib")
+        except Exception:
+            pass
+
+    if eta_model.model is None and os.path.exists("data/sample_gps.csv"):
+        try:
+            gps_df = pd.read_csv("data/sample_gps.csv")
+            obs_df = extract_observed_segment_times(gps_df, stops_df, segments_df)
+            eta_model.train(obs_df)
+            try:
+                eta_model.save("artifacts/eta_model.joblib")
+            except OSError:
+                pass
+        except Exception:
+            pass
+
+    # Fallback lookup if training not completed yet
+    if eta_model.hist_lookup is None:
+        records = []
+        for _, s in segments_df.iterrows():
+            for h in range(6, 23):
+                rush = 1.65 if h in [8, 9, 10, 17, 18, 19, 20] else 1.0
+                spd = 22.0 / rush
+                tt = (s["distance_m"] / 1000.0) / spd * 3600.0
+                for dow in range(7):
+                    records.append({
+                        "segment_id": s["segment_id"],
+                        "hour": h,
+                        "day_of_week": dow,
+                        "hist_travel_time": tt
                     })
-                    t += pd.Timedelta(minutes=float(rng.uniform(7, 12) * rush_factor))
-    pd.DataFrame(rows).to_csv("data/sample_gps.csv", index=False)
+        eta_model.hist_lookup = pd.DataFrame(records)
+
+    transit_router = TransitRouter(stops_df, segments_df, metro_stations_df, metro_segments_df, metro_interchanges)
 
 @app.on_event("startup")
 def startup_event():
-    global transit_router, segments_df, metro_stations_df, metro_segments_df
+    ensure_initialized()
 
-    if not os.path.exists("data/gtfs/stops.txt"):
-        generate_sample_delhi_data()
-
-    stops_df, segments_df = build_segments_from_gtfs("data/gtfs")
-    metro_stations_df, metro_segments_df, metro_interchanges = build_metro_network()
-
-    if os.path.exists("artifacts/eta_model.joblib"):
-        eta_model.load("artifacts/eta_model.joblib")
-    else:
-        gps_df = pd.read_csv("data/sample_gps.csv")
-        obs_df = extract_observed_segment_times(gps_df, stops_df, segments_df)
-        eta_model.train(obs_df)
-        eta_model.save("artifacts/eta_model.joblib")
-
-    transit_router = TransitRouter(stops_df, segments_df, metro_stations_df, metro_segments_df, metro_interchanges)
+# Serve frontend at root
+@app.get("/")
+def read_root():
+    if os.path.exists("index.html"):
+        return FileResponse("index.html")
+    return {"message": "Delhi TransitFlow API"}
 
 class JourneyRequest(BaseModel):
     origin_lat: float
@@ -125,6 +201,7 @@ def ingest_live_speed(pings: list[LiveGPSPing]):
 
 @app.post("/plan-journey")
 def plan_journey(req: JourneyRequest):
+    ensure_initialized()
     dt = datetime.fromisoformat(req.departure_time)
     scored_segments = eta_model.predict_segments(
         segments_df, hour=dt.hour, day_of_week=dt.weekday(), live_speeds_map=live_speeds_cache
@@ -138,9 +215,7 @@ def plan_journey(req: JourneyRequest):
 
 @app.post("/plan-mode-comparison")
 def plan_mode_comparison(req: JourneyRequest):
-    """
-    Returns both Fastest and Cheapest route options for the selected mode (bus, metro, or mixed).
-    """
+    ensure_initialized()
     dt = datetime.fromisoformat(req.departure_time)
     scored_segments = eta_model.predict_segments(
         segments_df, hour=dt.hour, day_of_week=dt.weekday(), live_speeds_map=live_speeds_cache
@@ -152,7 +227,7 @@ def plan_mode_comparison(req: JourneyRequest):
 
 @app.post("/plan-all-options")
 def plan_all_options(req: JourneyRequest):
-    """Returns bus-only, metro-only, and mixed route options with fares."""
+    ensure_initialized()
     dt = datetime.fromisoformat(req.departure_time)
     scored_segments = eta_model.predict_segments(
         segments_df, hour=dt.hour, day_of_week=dt.weekday(), live_speeds_map=live_speeds_cache
@@ -164,6 +239,7 @@ def plan_all_options(req: JourneyRequest):
 
 @app.get("/segments-status")
 def segments_status(hour: int = 9, day_of_week: int = 1):
+    ensure_initialized()
     scored = eta_model.predict_segments(segments_df, hour, day_of_week, live_speeds_cache)
     return scored[[
         "segment_id", "route_short_name", "stop_lat_from", "stop_lon_from",
@@ -172,7 +248,7 @@ def segments_status(hour: int = 9, day_of_week: int = 1):
 
 @app.get("/metro-lines")
 def metro_lines():
-    """Returns metro line geometries for map overlay."""
+    ensure_initialized()
     lines = {}
     for _, row in metro_segments_df.iterrows():
         line = row["route_short_name"]
@@ -191,5 +267,5 @@ def metro_lines():
 
 @app.get("/metro-stations")
 def metro_stations():
-    """Returns all metro stations for map markers."""
+    ensure_initialized()
     return metro_stations_df[["station_id", "station_name", "stop_lat", "stop_lon", "line"]].to_dict(orient="records")

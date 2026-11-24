@@ -10,7 +10,11 @@ class TrafficETAModel:
         self.global_median_speed = 18.0  # km/h fallback for Delhi buses
 
     def prepare_features(self, df, hist_stats):
-        df = df.merge(hist_stats, on=["segment_id", "hour", "day_of_week"], how="left")
+        if hist_stats is not None:
+            df = df.merge(hist_stats, on=["segment_id", "hour", "day_of_week"], how="left")
+        else:
+            df["hist_travel_time"] = np.nan
+
         df["hist_travel_time"] = df["hist_travel_time"].fillna(
             (df["distance_m"] / 1000.0) / self.global_median_speed * 3600.0
         )
@@ -59,7 +63,14 @@ class TrafficETAModel:
         feat_df = self.prepare_features(df, self.hist_lookup)
         features = ["segment_code", "hour", "day_of_week", "distance_m", "hist_travel_time", "recent_live_speed", "speed_ratio"]
 
-        preds = self.model.predict(feat_df[features])
+        if self.model is not None:
+            try:
+                preds = self.model.predict(feat_df[features])
+            except Exception:
+                preds = feat_df["hist_travel_time"].values
+        else:
+            preds = feat_df["hist_travel_time"].values
+
         df["pred_travel_time_sec"] = np.maximum(preds, 15.0)  # minimum 15s per segment
         df["pred_speed_kmph"] = (df["distance_m"] / 1000.0) / (df["pred_travel_time_sec"] / 3600.0)
 
@@ -75,5 +86,5 @@ class TrafficETAModel:
 
     def load(self, path="artifacts/eta_model.joblib"):
         data = joblib.load(path)
-        self.model = data["model"]
-        self.hist_lookup = data["hist_lookup"]
+        self.model = data.get("model")
+        self.hist_lookup = data.get("hist_lookup")

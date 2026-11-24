@@ -1,0 +1,24 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index.py"
+    },
+    {
+      "source": "/plan-(.*)",
+      "destination": "/api/index.py"
+    },
+    {
+      "source": "/segments-status",
+      "destination": "/api/index.py"
+    },
+    {
+      "source": "/metro-(.*)",
+      "destination": "/api/index.py"
+    },
+    {
+      "source": "/ingest-live-speed",
+      "destination": "/api/index.py"
+    }
+  ]
+}
