@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <title>Delhi TransitFlow — Bus, Metro & Multi-Modal Router</title>
   <meta charset="utf-8" />
@@ -8,85 +8,493 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
     * { box-sizing: border-box; }
-    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; height: 100vh; background: #0b1120; color: #f8fafc; }
-    #sidebar { width: 420px; padding: 20px; background: #0f172a; border-right: 1px solid #1e293b; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
-    #map { flex: 1; }
+    
+    /* Global Base */
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", Helvetica, Arial, sans-serif;
+      background: #090d16;
+      color: #f1f5f9;
+      overflow: hidden;
+    }
 
-    .brand { display: flex; align-items: center; gap: 10px; }
-    .brand h1 { margin: 0; font-size: 20px; font-weight: 800; letter-spacing: -0.5px; background: linear-gradient(135deg, #60a5fa, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-    .brand-sub { font-size: 12px; color: #94a3b8; }
+    body {
+      display: flex;
+    }
 
-    .section-label { font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; }
+    /* ── COMPLEMENTARY COLOR CUSTOM CURSOR ── */
+    #cursor-dot, #cursor-ring {
+      pointer-events: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      transform: translate(-50%, -50%);
+      border-radius: 50%;
+      z-index: 9999999;
+      mix-blend-mode: difference; /* Inverts whatever is underneath to its complementary color */
+    }
 
-    /* Segmented Mode Control */
-    .mode-selector { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; background: #1e293b; padding: 4px; border-radius: 10px; }
-    .mode-btn { background: transparent; border: none; padding: 10px 4px; color: #94a3b8; font-size: 12px; font-weight: 600; border-radius: 8px; cursor: pointer; transition: all 0.2s; display: flex; flex-direction: column; align-items: center; gap: 4px; }
-    .mode-btn .icon { font-size: 18px; }
-    .mode-btn:hover { color: #f8fafc; background: rgba(255,255,255,0.05); }
-    .mode-btn.active { background: #2563eb; color: #ffffff; box-shadow: 0 4px 12px rgba(37,99,235,0.35); }
+    #cursor-dot {
+      width: 8px;
+      height: 8px;
+      background-color: #ffffff;
+      transition: width 0.15s ease, height 0.15s ease;
+    }
 
-    /* Segmented Optimization Control */
-    .optimize-selector { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; background: #1e293b; padding: 4px; border-radius: 10px; }
-    .opt-btn { background: transparent; border: none; padding: 9px 8px; color: #94a3b8; font-size: 13px; font-weight: 600; border-radius: 8px; cursor: pointer; transition: all 0.2s; display: flex; justify-content: center; align-items: center; gap: 6px; }
-    .opt-btn:hover { color: #f8fafc; background: rgba(255,255,255,0.05); }
-    .opt-btn.active { background: #3b82f6; color: #ffffff; box-shadow: 0 2px 8px rgba(59,130,246,0.3); }
+    #cursor-ring {
+      width: 32px;
+      height: 32px;
+      border: 2px solid #ffffff;
+      background: rgba(255, 255, 255, 0.15);
+      transition: width 0.22s cubic-bezier(0.19, 1, 0.22, 1),
+                  height 0.22s cubic-bezier(0.19, 1, 0.22, 1),
+                  background 0.2s ease, border-color 0.2s ease;
+    }
 
-    /* Presets */
-    .presets-row { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
-    .preset-pill { background: #1e293b; border: 1px solid #334155; padding: 5px 9px; font-size: 11px; border-radius: 20px; color: #cbd5e1; cursor: pointer; white-space: nowrap; transition: all 0.2s; }
-    .preset-pill:hover { border-color: #60a5fa; color: #ffffff; background: #283548; }
+    /* Enlarged state when hovering interactive elements */
+    body.cursor-hover #cursor-dot {
+      width: 4px;
+      height: 4px;
+    }
+    body.cursor-hover #cursor-ring {
+      width: 48px;
+      height: 48px;
+      border-width: 2px;
+      background: rgba(255, 255, 255, 0.3);
+    }
+
+    /* ── SIDEBAR CONTAINER (FROSTED GLASS PANEL) ── */
+    #sidebar {
+      width: 430px;
+      padding: 22px;
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-right: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 4px 0 30px rgba(0, 0, 0, 0.5);
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      z-index: 1000;
+    }
+
+    #map {
+      flex: 1;
+      height: 100%;
+      background: #0b0f19;
+    }
+
+    /* Header & Branding */
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand-icon {
+      font-size: 28px;
+      filter: drop-shadow(0 2px 8px rgba(96, 165, 250, 0.5));
+    }
+    .brand h1 {
+      margin: 0;
+      font-size: 21px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, #60a5fa 0%, #c084fc 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .brand-sub {
+      font-size: 12px;
+      color: #94a3b8;
+    }
+
+    .section-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.9px;
+      margin-bottom: 6px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* ── GLASSMORPHIC MODE SELECTOR (Step 1) ── */
+    .glass-panel {
+      background: rgba(255, 255, 255, 0.04);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25), inset 0 1px 1px rgba(255, 255, 255, 0.1);
+      border-radius: 14px;
+    }
+
+    .mode-selector {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 6px;
+      padding: 6px;
+    }
+
+    .mode-btn {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      padding: 10px 4px;
+      color: #94a3b8;
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+    .mode-btn .icon {
+      font-size: 20px;
+      transition: transform 0.2s ease;
+    }
+    .mode-btn:hover {
+      background: rgba(255, 255, 255, 0.09);
+      border-color: rgba(255, 255, 255, 0.2);
+      color: #ffffff;
+      transform: translateY(-1px);
+    }
+    .mode-btn:hover .icon {
+      transform: scale(1.12);
+    }
+    .mode-btn.active {
+      background: linear-gradient(135deg, rgba(37, 99, 235, 0.45) 0%, rgba(139, 92, 246, 0.45) 100%);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(147, 197, 253, 0.5);
+      color: #ffffff;
+      box-shadow: 0 4px 18px rgba(37, 99, 235, 0.4), inset 0 1px 1px rgba(255, 255, 255, 0.4);
+    }
+    .mode-btn.active .icon {
+      filter: drop-shadow(0 2px 6px rgba(255, 255, 255, 0.6));
+    }
+
+    /* ── GLASSMORPHIC OPTIMIZATION SELECTOR (Step 2) ── */
+    .optimize-selector {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      padding: 5px;
+    }
+
+    .opt-btn {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      padding: 9px 8px;
+      color: #94a3b8;
+      font-size: 13px;
+      font-weight: 600;
+      border-radius: 9px;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 6px;
+    }
+    .opt-btn:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.18);
+      color: #ffffff;
+    }
+    .opt-btn.active {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.35) 0%, rgba(37, 99, 235, 0.35) 100%);
+      border: 1px solid rgba(110, 231, 183, 0.45);
+      color: #ffffff;
+      box-shadow: 0 4px 16px rgba(16, 185, 129, 0.25), inset 0 1px 1px rgba(255, 255, 255, 0.3);
+    }
+
+    /* Quick Presets */
+    .presets-row {
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      padding-bottom: 2px;
+    }
+    .preset-pill {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 5px 10px;
+      font-size: 11px;
+      border-radius: 20px;
+      color: #cbd5e1;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.2s;
+    }
+    .preset-pill:hover {
+      background: rgba(255, 255, 255, 0.12);
+      border-color: #60a5fa;
+      color: #ffffff;
+      transform: translateY(-1px);
+    }
 
     /* Inputs */
-    input[type="datetime-local"] { width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid #334155; background: #1e293b; color: white; font-size: 13px; }
+    input[type="datetime-local"] {
+      width: 100%;
+      padding: 9px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.04);
+      color: #ffffff;
+      font-size: 13px;
+      outline: none;
+      backdrop-filter: blur(10px);
+    }
+    input[type="datetime-local"]:focus {
+      border-color: #3b82f6;
+      box-shadow: 0 0 12px rgba(59, 130, 246, 0.3);
+    }
 
     /* Action Buttons */
-    .btn-row { display: flex; gap: 8px; }
-    button.action-btn { flex: 1; padding: 10px; background: #2563eb; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 13px; transition: background 0.2s; }
-    button.action-btn:hover { background: #1d4ed8; }
-    button.btn-reset { width: 80px; background: #334155; color: #cbd5e1; border: none; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600; }
-    button.btn-reset:hover { background: #475569; color: white; }
+    .btn-row {
+      display: flex;
+      gap: 8px;
+    }
+    button.action-btn {
+      flex: 1;
+      padding: 11px;
+      background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      font-weight: 700;
+      font-size: 13px;
+      transition: all 0.2s;
+      box-shadow: 0 4px 14px rgba(37, 99, 235, 0.3);
+    }
+    button.action-btn:hover {
+      background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);
+      transform: translateY(-1px);
+      box-shadow: 0 6px 18px rgba(37, 99, 235, 0.45);
+    }
+    button.btn-reset {
+      width: 80px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #cbd5e1;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    button.btn-reset:hover {
+      background: rgba(255, 255, 255, 0.12);
+      color: white;
+    }
 
     /* Status Banner */
-    .status-box { background: #1e293b; border: 1px dashed #475569; padding: 10px 12px; border-radius: 8px; font-size: 12px; color: #94a3b8; display: flex; align-items: center; gap: 8px; }
-    .status-box.active { border-color: #3b82f6; background: rgba(59,130,246,0.1); color: #93c5fd; }
+    .status-box {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px dashed rgba(255, 255, 255, 0.15);
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 12px;
+      color: #94a3b8;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      backdrop-filter: blur(8px);
+    }
+    .status-box.active {
+      border-color: #3b82f6;
+      background: rgba(59, 130, 246, 0.12);
+      color: #bfdbfe;
+    }
 
-    /* Comparison Cards */
-    .cards-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
-    .route-card { background: #1e293b; border: 2px solid #334155; border-radius: 10px; padding: 12px; cursor: pointer; transition: all 0.2s; position: relative; }
-    .route-card:hover { border-color: #60a5fa; transform: translateY(-1px); }
-    .route-card.selected { border-color: #3b82f6; background: #1e3a5f; box-shadow: 0 4px 14px rgba(37,99,235,0.25); }
+    /* ── COMPARISON CARDS (Fastest vs Cheapest) ── */
+    .cards-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .route-card {
+      background: rgba(255, 255, 255, 0.04);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1.5px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: 12px;
+      cursor: pointer;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      position: relative;
+    }
+    .route-card:hover {
+      border-color: rgba(96, 165, 250, 0.6);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    }
+    .route-card.selected {
+      border-color: #3b82f6;
+      background: linear-gradient(135deg, rgba(30, 58, 95, 0.6) 0%, rgba(37, 99, 235, 0.2) 100%);
+      box-shadow: 0 6px 20px rgba(37, 99, 235, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.25);
+    }
 
-    .card-badge { display: inline-block; font-size: 10px; font-weight: 800; padding: 2px 6px; border-radius: 4px; margin-bottom: 6px; }
-    .badge-fastest { background: #065f46; color: #34d399; }
-    .badge-cheapest { background: #78350f; color: #fbbf24; }
+    .card-badge {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 800;
+      padding: 2px 7px;
+      border-radius: 6px;
+      margin-bottom: 6px;
+    }
+    .badge-fastest {
+      background: rgba(16, 185, 129, 0.25);
+      border: 1px solid rgba(52, 211, 153, 0.4);
+      color: #34d399;
+    }
+    .badge-cheapest {
+      background: rgba(245, 158, 11, 0.25);
+      border: 1px solid rgba(251, 191, 36, 0.4);
+      color: #fbbf24;
+    }
 
-    .card-eta { font-size: 24px; font-weight: 800; color: #f8fafc; line-height: 1; }
-    .card-eta span { font-size: 12px; font-weight: 500; color: #94a3b8; }
-    .card-fare { font-size: 15px; font-weight: 700; color: #34d399; margin-top: 4px; }
-    .card-transfers { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+    .card-eta {
+      font-size: 24px;
+      font-weight: 800;
+      color: #f8fafc;
+      line-height: 1;
+    }
+    .card-eta span {
+      font-size: 12px;
+      font-weight: 500;
+      color: #94a3b8;
+    }
+    .card-fare {
+      font-size: 15px;
+      font-weight: 700;
+      color: #34d399;
+      margin-top: 5px;
+    }
+    .card-transfers {
+      font-size: 11px;
+      color: #94a3b8;
+      margin-top: 3px;
+    }
 
-    /* Details Panel */
-    .fare-breakdown { background: #064e3b; border: 1px solid #059669; border-radius: 8px; padding: 10px 12px; font-size: 12px; margin-top: 6px; }
-    .fare-item { display: flex; justify-content: space-between; margin-bottom: 3px; }
-    .fare-item:last-child { margin-bottom: 0; }
-    .fare-total { font-weight: 800; font-size: 14px; color: #6ee7b7; border-top: 1px solid #047857; padding-top: 4px; margin-top: 4px; }
+    /* Itinerary & Fares */
+    .fare-breakdown {
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(52, 211, 153, 0.25);
+      backdrop-filter: blur(10px);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 12px;
+      margin-top: 6px;
+    }
+    .fare-item {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 3px;
+    }
+    .fare-total {
+      font-weight: 800;
+      font-size: 14px;
+      color: #6ee7b7;
+      border-top: 1px solid rgba(52, 211, 153, 0.3);
+      padding-top: 5px;
+      margin-top: 5px;
+    }
 
-    .leg { background: #1e293b; padding: 10px 12px; border-radius: 8px; margin-top: 6px; font-size: 13px; border-left: 4px solid #3b82f6; }
-    .leg.metro { border-left-color: #a855f7; }
-    .leg.bus { border-left-color: #3b82f6; }
+    .leg {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      backdrop-filter: blur(10px);
+      padding: 10px 12px;
+      border-radius: 10px;
+      margin-top: 6px;
+      font-size: 13px;
+      border-left: 4px solid #3b82f6;
+    }
+    .leg.metro { border-left-color: #c084fc; }
+    .leg.bus { border-left-color: #60a5fa; }
     .leg.walk { border-left-color: #64748b; }
-    .leg-top { display: flex; justify-content: space-between; font-weight: 700; }
-    .leg-stops { font-size: 12px; color: #94a3b8; margin-top: 3px; }
-    .cong-badge { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; margin-left: 6px; }
+    .leg-top {
+      display: flex;
+      justify-content: space-between;
+      font-weight: 700;
+    }
+    .leg-stops {
+      font-size: 12px;
+      color: #94a3b8;
+      margin-top: 3px;
+    }
+    .cong-badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      margin-left: 6px;
+    }
     .cong-free_flow { background: #065f46; color: #34d399; }
     .cong-moderate { background: #78350f; color: #fbbf24; }
     .cong-heavy { background: #7f1d1d; color: #f87171; }
+
+    /* ── FLOATING MAP LEGEND (FROSTED GLASS) ── */
+    .map-legend {
+      position: absolute;
+      bottom: 24px;
+      right: 24px;
+      z-index: 1000;
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 12px;
+      padding: 10px 14px;
+      font-size: 11px;
+      color: #cbd5e1;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .legend-title {
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: #94a3b8;
+      margin-bottom: 2px;
+    }
+    .legend-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .legend-line {
+      width: 18px;
+      height: 3px;
+      border-radius: 2px;
+    }
+    .legend-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
   </style>
 </head>
 <body>
+
+  <!-- Dynamic Complementary Color Inverting Cursor -->
+  <div id="cursor-dot"></div>
+  <div id="cursor-ring"></div>
+
   <div id="sidebar">
     <div class="brand">
-      <span style="font-size:26px">🚌🚇</span>
+      <span class="brand-icon">🚌🚇</span>
       <div>
         <h1>Delhi TransitFlow</h1>
         <div class="brand-sub">Real-Time Bus • Delhi Metro • Smart Intermodal</div>
@@ -103,10 +511,10 @@
       </div>
     </div>
 
-    <!-- Step 1: Mode Selection -->
+    <!-- Step 1: Mode Selection (Glassmorphic) -->
     <div>
-      <div class="section-label">1. Choose Transit Mode</div>
-      <div class="mode-selector">
+      <div class="section-label">1. Choose Transit Network</div>
+      <div class="glass-panel mode-selector">
         <button class="mode-btn" id="btn-mode-metro" onclick="setMode('metro')">
           <span class="icon">🚇</span>
           <span>Metro Only</span>
@@ -122,10 +530,10 @@
       </div>
     </div>
 
-    <!-- Step 2: Optimization Selection -->
+    <!-- Step 2: Optimization Selection (Glassmorphic) -->
     <div>
       <div class="section-label">2. Optimization Preference</div>
-      <div class="optimize-selector">
+      <div class="glass-panel optimize-selector">
         <button class="opt-btn active" id="btn-opt-fastest" onclick="setOptimize('fastest')">
           <span>⚡ Fastest Way</span>
         </button>
@@ -154,7 +562,7 @@
       <span id="statusText">Click map to set <b>Origin</b>, then click again for <b>Destination</b>.</span>
     </div>
 
-    <!-- Mode Comparison Cards -->
+    <!-- Mode Comparison Cards (Fastest vs Cheapest) -->
     <div id="comparisonSection" style="display:none">
       <div class="section-label" id="comparisonLabel">Route Options</div>
       <div class="cards-grid" id="cardsGrid"></div>
@@ -164,9 +572,57 @@
     <div id="detailSection"></div>
   </div>
 
-  <div id="map"></div>
+  <div id="map">
+    <!-- Floating Transit Legend -->
+    <div class="map-legend">
+      <div class="legend-title">Transit Network</div>
+      <div class="legend-row"><div class="legend-line" style="background:#ffd700"></div><span>Yellow Line (Metro)</span></div>
+      <div class="legend-row"><div class="legend-line" style="background:#1e90ff"></div><span>Blue Line (Metro)</span></div>
+      <div class="legend-row"><div class="legend-line" style="background:#8b008b"></div><span>Violet Line (Metro)</span></div>
+      <div class="legend-row"><div class="legend-line" style="background:#ff00ff"></div><span>Magenta Line (Metro)</span></div>
+      <div class="legend-row"><div class="legend-dot" style="background:#10b981"></div><span>Bus (Low Traffic)</span></div>
+      <div class="legend-row"><div class="legend-dot" style="background:#ef4444"></div><span>Bus (Heavy Congestion)</span></div>
+    </div>
+  </div>
 
   <script>
+    // ── 1. COMPLEMENTARY COLOR CUSTOM CURSOR LOGIC ──
+    const cursorDot = document.getElementById('cursor-dot');
+    const cursorRing = document.getElementById('cursor-ring');
+
+    let mouseX = window.innerWidth / 2;
+    let mouseY = window.innerHeight / 2;
+    let ringX = mouseX;
+    let ringY = mouseY;
+
+    window.addEventListener('mousemove', (e) => {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+      cursorDot.style.left = `${mouseX}px`;
+      cursorDot.style.top = `${mouseY}px`;
+    });
+
+    // Smooth lerp loop for the outer cursor ring
+    function renderCursor() {
+      ringX += (mouseX - ringX) * 0.18;
+      ringY += (mouseY - ringY) * 0.18;
+      cursorRing.style.left = `${ringX}px`;
+      cursorRing.style.top = `${ringY}px`;
+      requestAnimationFrame(renderCursor);
+    }
+    requestAnimationFrame(renderCursor);
+
+    // Expand cursor ring when hovering over interactive elements
+    function setupCursorHoverListeners() {
+      const interactives = document.querySelectorAll('button, .mode-btn, .opt-btn, .preset-pill, .route-card, input');
+      interactives.forEach(el => {
+        el.addEventListener('mouseenter', () => document.body.classList.add('cursor-hover'));
+        el.addEventListener('mouseleave', () => document.body.classList.remove('cursor-hover'));
+      });
+    }
+    setupCursorHoverListeners();
+
+    // ── 2. TRANSIT MAP & ROUTING LOGIC ──
     const API = 'http://127.0.0.1:8000';
     const map = L.map('map').setView([28.6139, 77.2090], 12);
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
@@ -182,7 +638,7 @@
     let currentOptimize = 'fastest'; // 'fastest' | 'cheapest'
     let currentComparison = null;    // { fastest: ..., cheapest: ... }
 
-    // ── Pre-defined corridor coordinates ──
+    // Pre-defined corridor presets
     const PRESETS = {
       kashmiri_nehru: { orig: [28.6675, 77.2282, "Kashmiri Gate ISBT"], dest: [28.5491, 77.2533, "Nehru Place"] },
       cp_hauzkhas:    { orig: [28.6315, 77.2167, "Connaught Place"],   dest: [28.5494, 77.2001, "Hauz Khas"] },
@@ -202,7 +658,6 @@
       planSelectedRoute();
     }
 
-    // ── Mode Switcher ──
     function setMode(mode) {
       currentMode = mode;
       document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
@@ -213,7 +668,6 @@
       }
     }
 
-    // ── Optimize Switcher ──
     function setOptimize(opt) {
       currentOptimize = opt;
       document.querySelectorAll('.opt-btn').forEach(b => b.classList.remove('active'));
@@ -226,7 +680,6 @@
       }
     }
 
-    // ── Map Click ──
     map.on('click', (e) => {
       if (!origin) {
         origin = e.latlng;
@@ -247,7 +700,6 @@
       box.classList.add('active');
     }
 
-    // ── Fetch Comparison (Fastest + Cheapest for chosen mode) ──
     async function planSelectedRoute() {
       if (!origin || !dest) {
         alert("Please click on the map to set Origin and Destination!");
@@ -273,7 +725,7 @@
         currentComparison = data;
 
         if (!data.fastest && !data.cheapest) {
-          document.getElementById('detailSection').innerHTML = `<p style="color:#ef4444;font-size:13px">No valid route found for ${currentMode.toUpperCase()}. Try switching mode or moving pins closer to transit.</p>`;
+          document.getElementById('detailSection').innerHTML = `<p style="color:#ef4444;font-size:13px">No valid route found for ${currentMode.toUpperCase()}. Try switching mode or moving pins closer to transit lines.</p>`;
           return;
         }
 
@@ -287,7 +739,6 @@
       }
     }
 
-    // ── Render the 2 Cards (Fastest vs Cheapest) ──
     function renderComparisonCards(comp) {
       const grid = document.getElementById('cardsGrid');
       const sec = document.getElementById('comparisonSection');
@@ -326,15 +777,15 @@
         `;
         grid.appendChild(card);
       });
+
+      setupCursorHoverListeners();
     }
 
-    // ── Select and Display Specific Route ──
     function selectRoute(route, optKey) {
       document.querySelectorAll('.route-card').forEach(c => c.classList.remove('selected'));
       const activeCard = document.getElementById(`card-${optKey}`);
       if (activeCard) activeCard.classList.add('selected');
 
-      // Draw polyline
       routeLayers.forEach(l => map.removeLayer(l));
       routeLayers = [];
 
@@ -348,12 +799,10 @@
         map.fitBounds(poly.getBounds().pad(0.2));
       }
 
-      // Render Details
       renderItinerary(route);
       updateStatus(`Showing <b>${optKey.toUpperCase()}</b> route: ${route.total_eta_min} min • ₹${route.fare.total_fare_min}`);
     }
 
-    // ── Compare All 3 Modes Simultaneously ──
     async function compareAllModes() {
       if (!origin || !dest) {
         alert("Please set Origin and Destination first!");
@@ -403,9 +852,9 @@
       if (options.length) {
         selectRoute(options[0], 'fastest');
       }
+      setupCursorHoverListeners();
     }
 
-    // ── Itinerary Details ──
     function renderItinerary(route) {
       const container = document.getElementById('detailSection');
       const f = route.fare;
@@ -455,12 +904,10 @@
       updateStatus("Pins cleared. Click map to set <b>Origin</b>.");
     }
 
-    // ── Load Overlays (Metro Network + Bus Congestion) ──
     async function loadTransitOverlays() {
       overlayLayers.clearLayers();
       const hour = new Date(document.getElementById('depTime').value).getHours();
 
-      // Bus congestion segments
       try {
         const res = await fetch(`${API}/segments-status?hour=${hour}`);
         const segs = await res.json();
@@ -473,7 +920,6 @@
         });
       } catch(e){}
 
-      // Metro Lines
       try {
         const res = await fetch(`${API}/metro-lines`);
         const lines = await res.json();
@@ -487,7 +933,6 @@
         });
       } catch(e){}
 
-      // Metro Stations
       try {
         const res = await fetch(`${API}/metro-stations`);
         const stations = await res.json();
