@@ -1,67 +1,197 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Delhi Bus Transit Router</title>
+  <title>Delhi Transit Router — Bus + Metro</title>
   <meta charset="utf-8" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
-    body { margin: 0; font-family: system-ui, sans-serif; display: flex; height: 100vh; }
-    #sidebar { width: 340px; padding: 16px; background: #111827; color: #f9fafb; overflow-y: auto; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, -apple-system, sans-serif; display: flex; height: 100vh; background: #0f172a; }
+    #sidebar { width: 380px; padding: 18px; background: #111827; color: #f9fafb; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
     #map { flex: 1; }
-    button { width: 100%; padding: 10px; background: #2563eb; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; margin-top: 8px; }
-    select, input { width: 100%; padding: 8px; margin: 6px 0 12px; border-radius: 4px; border: 1px solid #374151; background: #1f2937; color: white; }
-    .leg { background: #1f2937; padding: 10px; border-radius: 6px; margin-top: 8px; border-left: 4px solid #10b981; font-size: 13px; }
+
+    h2 { margin: 0 0 4px; font-size: 20px; }
+    .subtitle { font-size: 12px; color: #6b7280; margin-bottom: 8px; }
+
+    label { font-size: 12px; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.5px; }
+    select, input { width: 100%; padding: 9px 10px; border-radius: 6px; border: 1px solid #374151; background: #1f2937; color: white; font-size: 14px; }
+    .row { display: flex; gap: 8px; }
+    .row > * { flex: 1; }
+
+    button { width: 100%; padding: 11px; background: #2563eb; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px; transition: background 0.2s; }
+    button:hover { background: #1d4ed8; }
+    .btn-secondary { background: #374151; }
+    .btn-secondary:hover { background: #4b5563; }
+
+    .option-card { background: #1f2937; padding: 12px 14px; border-radius: 10px; border: 1px solid #374151; cursor: pointer; transition: all 0.2s; }
+    .option-card:hover, .option-card.active { border-color: #3b82f6; background: #1e3a5f; }
+    .option-header { display: flex; justify-content: space-between; align-items: center; }
+    .option-title { font-weight: 700; font-size: 15px; }
+    .option-eta { font-size: 22px; font-weight: 800; color: #3b82f6; }
+    .option-meta { font-size: 12px; color: #9ca3af; margin-top: 4px; }
+    .tag { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: 700; margin-right: 4px; }
+    .tag-fastest { background: #064e3b; color: #34d399; }
+    .tag-cheapest { background: #78350f; color: #fbbf24; }
+
+    .fare-box { background: #064e3b; padding: 10px 12px; border-radius: 8px; margin-top: 6px; }
+    .fare-row { display: flex; justify-content: space-between; font-size: 13px; }
+    .fare-label { color: #6ee7b7; }
+    .fare-value { color: #34d399; font-weight: 700; }
+
+    .leg { background: #1f2937; padding: 10px 12px; border-radius: 8px; margin-top: 6px; font-size: 13px; border-left: 4px solid #10b981; }
+    .leg.metro { border-left-color: #a855f7; }
+    .leg.walk { border-left-color: #6b7280; }
     .leg.transfer { border-left-color: #f59e0b; }
+
+    .leg-icon { font-size: 16px; margin-right: 6px; }
+    .leg-dur { float: right; color: #9ca3af; font-size: 12px; }
+
+    .divider { border-top: 1px solid #1f2937; margin: 6px 0; }
+
+    #instructions { font-size: 13px; color: #9ca3af; line-height: 1.5; }
   </style>
 </head>
 <body>
   <div id="sidebar">
-    <h2>Delhi Bus ETA Planner</h2>
-    <p style="font-size: 13px; color: #9ca3af;">Click map to set <b>Origin</b>, click again for <b>Destination</b>.</p>
+    <div>
+      <h2>🚌🚇 Delhi Transit Router</h2>
+      <div class="subtitle">Bus + Metro • Fastest / Cheapest / Fewest Transfers</div>
+    </div>
+
+    <div id="instructions">
+      Click the map to set <b style="color:#3b82f6">Origin</b>, click again for <b style="color:#ef4444">Destination</b>.
+    </div>
+
     <label>Departure Time</label>
     <input type="datetime-local" id="depTime" value="2026-11-24T09:15" />
-    <button onclick="resetPoints()">Reset Map Pins</button>
-    <div id="summary" style="margin-top: 16px;"></div>
+
+    <div class="row">
+      <div>
+        <label>Mode</label>
+        <select id="modeSelect">
+          <option value="mixed" selected>🚌+🚇 Mixed</option>
+          <option value="bus">🚌 Bus Only</option>
+          <option value="metro">🚇 Metro Only</option>
+        </select>
+      </div>
+      <div>
+        <label>Optimize</label>
+        <select id="optimizeSelect">
+          <option value="fastest" selected>⚡ Fastest</option>
+          <option value="cheapest">💰 Cheapest</option>
+          <option value="least_transfers">🔄 Fewest Transfers</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="row">
+      <button onclick="compareAll()">Compare All Options</button>
+      <button class="btn-secondary" onclick="resetPoints()">Reset</button>
+    </div>
+
+    <div id="options"></div>
+    <div id="detail"></div>
   </div>
   <div id="map"></div>
 
   <script>
+    const API = 'http://127.0.0.1:8000';
     const map = L.map('map').setView([28.6139, 77.2090], 12);
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; OpenStreetMap'
+      attribution: '&copy; OSM contributors'
     }).addTo(map);
 
-    let origin = null, dest = null, markers = [], routeLine = null, congestionLayer = L.layerGroup().addTo(map);
+    let origin = null, dest = null, markers = [], routeLines = [], overlayLayers = L.layerGroup().addTo(map);
+    let allOptions = [];
 
-    async function loadCongestionOverlay() {
-      congestionLayer.clearLayers();
+    // ── Load metro lines + stations + bus congestion overlay ──
+    async function loadOverlays() {
+      overlayLayers.clearLayers();
       const hour = new Date(document.getElementById('depTime').value).getHours();
-      const res = await fetch(`http://127.0.0.1:8000/segments-status?hour=${hour}`);
-      const segs = await res.json();
-      const colors = { free_flow: '#10b981', moderate: '#f59e0b', heavy: '#ef4444' };
 
-      segs.forEach(s => {
-        L.polyline([[s.stop_lat_from, s.stop_lon_from], [s.stop_lat_to, s.stop_lon_to]], {
-          color: colors[s.congestion] || '#10b981', weight: 4, opacity: 0.65
-        }).bindPopup(`Route ${s.route_short_name}: ${s.pred_speed_kmph.toFixed(1)} km/h (${s.congestion})`)
-          .addTo(congestionLayer);
-      });
+      // Bus congestion
+      try {
+        const busRes = await fetch(`${API}/segments-status?hour=${hour}`);
+        const segs = await busRes.json();
+        const colors = { free_flow: '#10b981', moderate: '#f59e0b', heavy: '#ef4444' };
+        segs.forEach(s => {
+          L.polyline([[s.stop_lat_from, s.stop_lon_from], [s.stop_lat_to, s.stop_lon_to]], {
+            color: colors[s.congestion] || '#10b981', weight: 3, opacity: 0.5
+          }).bindPopup(`🚌 ${s.route_short_name}: ${s.pred_speed_kmph.toFixed(1)} km/h (${s.congestion})`)
+            .addTo(overlayLayers);
+        });
+      } catch(e) {}
+
+      // Metro lines
+      try {
+        const metroRes = await fetch(`${API}/metro-lines`);
+        const lines = await metroRes.json();
+        lines.forEach(line => {
+          line.segments.forEach(seg => {
+            L.polyline([seg.from, seg.to], {
+              color: line.color, weight: 4, opacity: 0.7, dashArray: '8 4'
+            }).bindPopup(`🚇 ${line.name}: ${seg.station_from} → ${seg.station_to}`)
+              .addTo(overlayLayers);
+          });
+        });
+      } catch(e) {}
+
+      // Metro stations
+      try {
+        const stRes = await fetch(`${API}/metro-stations`);
+        const stations = await stRes.json();
+        const lineColors = { Yellow: '#FFD700', Violet: '#8B008B', Blue: '#1E90FF', Magenta: '#FF00FF' };
+        stations.forEach(st => {
+          L.circleMarker([st.stop_lat, st.stop_lon], {
+            radius: 4, fillColor: lineColors[st.line] || '#888', color: '#fff', weight: 1, fillOpacity: 0.9
+          }).bindPopup(`🚇 ${st.station_name} (${st.line} Line)`)
+            .addTo(overlayLayers);
+        });
+      } catch(e) {}
     }
 
+    // ── Map click handler ──
     map.on('click', async (e) => {
       if (!origin) {
         origin = e.latlng;
-        markers.push(L.marker(origin).addTo(map).bindPopup("Origin").openPopup());
+        markers.push(L.marker(origin, {}).addTo(map).bindPopup("📍 Origin").openPopup());
       } else if (!dest) {
         dest = e.latlng;
-        markers.push(L.marker(dest).addTo(map).bindPopup("Destination").openPopup());
-        await planJourney();
+        markers.push(L.marker(dest, {}).addTo(map).bindPopup("🏁 Destination").openPopup());
+        await planSingle();
       }
     });
 
-    async function planJourney() {
-      const res = await fetch('http://127.0.0.1:8000/plan-journey', {
+    // ── Single route plan ──
+    async function planSingle() {
+      const mode = document.getElementById('modeSelect').value;
+      const optimize = document.getElementById('optimizeSelect').value;
+
+      const res = await fetch(`${API}/plan-journey`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          origin_lat: origin.lat, origin_lng: origin.lng,
+          dest_lat: dest.lat, dest_lng: dest.lng,
+          departure_time: document.getElementById('depTime').value,
+          mode, optimize
+        })
+      });
+      const data = await res.json();
+      if (data.error) {
+        document.getElementById('detail').innerHTML = `<p style="color:#ef4444;">${data.error}</p>`;
+        return;
+      }
+      showRoute(data);
+      showDetail(data);
+    }
+
+    // ── Compare all options ──
+    async function compareAll() {
+      if (!origin || !dest) { alert('Click the map to set origin and destination first!'); return; }
+
+      const res = await fetch(`${API}/plan-all-options`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -71,35 +201,88 @@
         })
       });
       const data = await res.json();
-      const summary = document.getElementById('summary');
-
-      if (data.error) {
-        summary.innerHTML = `<p style="color:#ef4444;">${data.error}</p>`;
-        return;
+      allOptions = data.options || [];
+      showOptions(allOptions);
+      if (allOptions.length > 0) {
+        showRoute(allOptions[0]);
+        showDetail(allOptions[0]);
       }
+    }
 
-      if (routeLine) map.removeLayer(routeLine);
-      routeLine = L.polyline(data.polyline, { color: '#3b82f6', weight: 6 }).addTo(map);
+    function showOptions(options) {
+      const el = document.getElementById('options');
+      if (!options.length) { el.innerHTML = '<p style="color:#ef4444;">No routes found.</p>'; return; }
 
-      summary.innerHTML = `<h3>Total ETA: ${data.total_eta_min} mins (${data.transfers} transfers)</h3>` +
-        data.legs.map(l => `
-          <div class="leg ${l.type.includes('transfer') ? 'transfer' : ''}">
-            <b>${l.type === 'bus' ? 'Bus ' + l.route : 'Walk / Transfer'}</b> (${l.duration_min} min)<br/>
-            ${l.from_stop} → ${l.to_stop}
-          </div>
-        `).join('');
+      el.innerHTML = options.map((opt, i) => {
+        const tags = (opt.tags || []).map(t =>
+          `<span class="tag ${t.includes('Fast') ? 'tag-fastest' : 'tag-cheapest'}">${t}</span>`
+        ).join('');
+        return `
+          <div class="option-card ${i === 0 ? 'active' : ''}" onclick="selectOption(${i})">
+            <div class="option-header">
+              <div>
+                <div class="option-title">${opt.option_label || opt.mode}</div>
+                <div class="option-meta">${opt.transfers} transfer(s) • ₹${opt.fare.total_fare_min}${opt.fare.total_fare_min !== opt.fare.total_fare_max ? '–₹' + opt.fare.total_fare_max : ''}</div>
+                <div style="margin-top:4px">${tags}</div>
+              </div>
+              <div class="option-eta">${opt.total_eta_min}<span style="font-size:12px;color:#9ca3af"> min</span></div>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    function selectOption(i) {
+      document.querySelectorAll('.option-card').forEach((c, j) => c.classList.toggle('active', i === j));
+      showRoute(allOptions[i]);
+      showDetail(allOptions[i]);
+    }
+
+    function showRoute(data) {
+      routeLines.forEach(l => map.removeLayer(l));
+      routeLines = [];
+      if (data.polyline) {
+        const line = L.polyline(data.polyline, { color: '#3b82f6', weight: 6, opacity: 0.9 }).addTo(map);
+        routeLines.push(line);
+        map.fitBounds(line.getBounds().pad(0.15));
+      }
+    }
+
+    function showDetail(data) {
+      const el = document.getElementById('detail');
+      const f = data.fare;
+      el.innerHTML = `
+        <div class="divider"></div>
+        <h3 style="margin:8px 0 4px;">🕐 ${data.total_eta_min} min — ${data.transfers} transfer(s)</h3>
+        <div class="fare-box">
+          <div class="fare-row"><span class="fare-label">Total Fare</span><span class="fare-value">₹${f.total_fare_min}${f.total_fare_min !== f.total_fare_max ? ' – ₹' + f.total_fare_max : ''}</span></div>
+          ${f.metro_fare ? `<div class="fare-row"><span class="fare-label">🚇 Metro</span><span class="fare-value">₹${f.metro_fare} (${f.metro_distance_km} km)</span></div>` : ''}
+          ${f.bus_fare_non_ac ? `<div class="fare-row"><span class="fare-label">🚌 Bus (Non-AC / AC)</span><span class="fare-value">₹${f.bus_fare_non_ac} / ₹${f.bus_fare_ac}</span></div>` : ''}
+        </div>
+        ${data.legs.map(l => {
+          let cls = 'leg';
+          if (l.mode === 'metro') cls += ' metro';
+          else if (l.mode === 'walk') cls += (l.type.includes('transfer') || l.type.includes('interchange')) ? ' transfer' : ' walk';
+          return `<div class="${cls}">
+            <span class="leg-icon">${l.icon || ''}</span>
+            <b>${l.route}</b>
+            <span class="leg-dur">${l.duration_min} min</span><br/>
+            <span style="color:#9ca3af">${l.from_stop} → ${l.to_stop}</span>
+          </div>`;
+        }).join('')}`;
     }
 
     function resetPoints() {
-      origin = null; dest = null;
+      origin = null; dest = null; allOptions = [];
       markers.forEach(m => map.removeLayer(m));
       markers = [];
-      if (routeLine) map.removeLayer(routeLine);
-      document.getElementById('summary').innerHTML = '';
+      routeLines.forEach(l => map.removeLayer(l));
+      routeLines = [];
+      document.getElementById('options').innerHTML = '';
+      document.getElementById('detail').innerHTML = '';
     }
 
-    document.getElementById('depTime').addEventListener('change', loadCongestionOverlay);
-    loadCongestionOverlay();
+    document.getElementById('depTime').addEventListener('change', loadOverlays);
+    loadOverlays();
   </script>
 </body>
 </html>

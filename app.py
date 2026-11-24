@@ -5,19 +5,22 @@ import pandas as pd
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import Optional
 
-from data_pipeline import build_segments_from_gtfs, extract_observed_segment_times
+from data_pipeline import build_segments_from_gtfs, extract_observed_segment_times, build_metro_network
 from model import TrafficETAModel
 from router import TransitRouter
 
-app = FastAPI(title="Delhi Bus ETA & Routing API")
+app = FastAPI(title="Delhi Multi-Modal Transit API (Bus + Metro)")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # Global state
 eta_model = TrafficETAModel()
 transit_router = None
 segments_df = None
-live_speeds_cache = {}  # Updated via POST /ingest-live-speed
+metro_stations_df = None
+metro_segments_df = None
+live_speeds_cache = {}
 
 def generate_sample_delhi_data():
     """Creates realistic Delhi corridor GTFS + GPS logs if data/gtfs is missing."""
@@ -44,16 +47,13 @@ def generate_sample_delhi_data():
         {"trip_id": "T3", "route_id": "R764"},
     ])
     stop_times = pd.DataFrame([
-        # Route 419: Kashmiri Gate -> Red Fort -> ITO -> Nehru Place
         {"trip_id": "T1", "stop_id": 1, "stop_sequence": 1},
         {"trip_id": "T1", "stop_id": 2, "stop_sequence": 2},
         {"trip_id": "T1", "stop_id": 3, "stop_sequence": 3},
         {"trip_id": "T1", "stop_id": 7, "stop_sequence": 4},
-        # Route 502: Connaught Place -> AIIMS -> Hauz Khas
         {"trip_id": "T2", "stop_id": 4, "stop_sequence": 1},
         {"trip_id": "T2", "stop_id": 5, "stop_sequence": 2},
         {"trip_id": "T2", "stop_id": 6, "stop_sequence": 3},
-        # Route 764: ITO -> Connaught Place -> Hauz Khas -> Nehru Place
         {"trip_id": "T3", "stop_id": 3, "stop_sequence": 1},
         {"trip_id": "T3", "stop_id": 4, "stop_sequence": 2},
         {"trip_id": "T3", "stop_id": 6, "stop_sequence": 3},
@@ -64,7 +64,6 @@ def generate_sample_delhi_data():
     trips.to_csv("data/gtfs/trips.txt", index=False)
     stop_times.to_csv("data/gtfs/stop_times.txt", index=False)
 
-    # Synthetic historical GPS observations with rush-hour slowdown
     rng = np.random.default_rng(42)
     rows = []
     for hour in range(6, 23):
@@ -87,11 +86,13 @@ def generate_sample_delhi_data():
 
 @app.on_event("startup")
 def startup_event():
-    global transit_router, segments_df
+    global transit_router, segments_df, metro_stations_df, metro_segments_df
+
     if not os.path.exists("data/gtfs/stops.txt"):
         generate_sample_delhi_data()
 
     stops_df, segments_df = build_segments_from_gtfs("data/gtfs")
+    metro_stations_df, metro_segments_df, metro_interchanges = build_metro_network()
 
     if os.path.exists("artifacts/eta_model.joblib"):
         eta_model.load("artifacts/eta_model.joblib")
@@ -101,7 +102,7 @@ def startup_event():
         eta_model.train(obs_df)
         eta_model.save("artifacts/eta_model.joblib")
 
-    transit_router = TransitRouter(stops_df, segments_df)
+    transit_router = TransitRouter(stops_df, segments_df, metro_stations_df, metro_segments_df, metro_interchanges)
 
 class JourneyRequest(BaseModel):
     origin_lat: float
@@ -109,6 +110,8 @@ class JourneyRequest(BaseModel):
     dest_lat: float
     dest_lng: float
     departure_time: str = "2026-11-24T09:15:00"
+    mode: str = "mixed"           # bus | metro | mixed
+    optimize: str = "fastest"     # fastest | cheapest | least_transfers
 
 class LiveGPSPing(BaseModel):
     segment_id: str
@@ -116,7 +119,6 @@ class LiveGPSPing(BaseModel):
 
 @app.post("/ingest-live-speed")
 def ingest_live_speed(pings: list[LiveGPSPing]):
-    """Updates real-time segment speeds from live GTFS-RT / GPS feed."""
     for p in pings:
         live_speeds_cache[p.segment_id] = p.speed_kmph
     return {"updated_segments": len(pings)}
@@ -127,15 +129,53 @@ def plan_journey(req: JourneyRequest):
     scored_segments = eta_model.predict_segments(
         segments_df, hour=dt.hour, day_of_week=dt.weekday(), live_speeds_map=live_speeds_cache
     )
-    graph = transit_router.build_graph(scored_segments)
-    result = transit_router.plan_journey(graph, req.origin_lat, req.origin_lng, req.dest_lat, req.dest_lng)
+    graph = transit_router.build_graph(scored_segments, mode=req.mode)
+    result = transit_router.plan_journey(
+        graph, req.origin_lat, req.origin_lng, req.dest_lat, req.dest_lng,
+        mode=req.mode, optimize=req.optimize
+    )
     return result
+
+@app.post("/plan-all-options")
+def plan_all_options(req: JourneyRequest):
+    """Returns bus-only, metro-only, and mixed route options with fares."""
+    dt = datetime.fromisoformat(req.departure_time)
+    scored_segments = eta_model.predict_segments(
+        segments_df, hour=dt.hour, day_of_week=dt.weekday(), live_speeds_map=live_speeds_cache
+    )
+    options = transit_router.plan_all_options(
+        scored_segments, req.origin_lat, req.origin_lng, req.dest_lat, req.dest_lng
+    )
+    return {"options": options}
 
 @app.get("/segments-status")
 def segments_status(hour: int = 9, day_of_week: int = 1):
-    """Returns all segments with congestion color levels for map overlay."""
     scored = eta_model.predict_segments(segments_df, hour, day_of_week, live_speeds_cache)
     return scored[[
         "segment_id", "route_short_name", "stop_lat_from", "stop_lon_from",
         "stop_lat_to", "stop_lon_to", "pred_speed_kmph", "congestion"
     ]].to_dict(orient="records")
+
+@app.get("/metro-lines")
+def metro_lines():
+    """Returns metro line geometries for map overlay."""
+    lines = {}
+    for _, row in metro_segments_df.iterrows():
+        line = row["route_short_name"]
+        if line not in lines:
+            lines[line] = {"name": line, "segments": [], "color": {
+                "Metro Yellow": "#FFD700", "Metro Violet": "#8B008B",
+                "Metro Blue": "#1E90FF", "Metro Magenta": "#FF00FF"
+            }.get(line, "#888888")}
+        lines[line]["segments"].append({
+            "from": [row["stop_lat_from"], row["stop_lon_from"]],
+            "to": [row["stop_lat_to"], row["stop_lon_to"]],
+            "station_from": row["stop_name_from"],
+            "station_to": row["stop_name_to"]
+        })
+    return list(lines.values())
+
+@app.get("/metro-stations")
+def metro_stations():
+    """Returns all metro stations for map markers."""
+    return metro_stations_df[["station_id", "station_name", "stop_lat", "stop_lon", "line"]].to_dict(orient="records")

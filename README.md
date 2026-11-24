@@ -1,65 +1,90 @@
-# Delhi Bus ETA & Transit Router 🚌
+# Delhi TransitFlow — Multi-Modal Bus + Metro Router 🚌🚇
 
-An end-to-end intelligent bus transit routing system for Delhi, featuring **ML-powered ETA prediction**, **real-time congestion awareness**, and an **interactive map UI**.
+An end-to-end intelligent transit routing and ETA prediction system for Delhi, featuring **ML-powered Bus ETA prediction**, **Delhi Metro network integration**, **multi-modal (Bus + Metro) routing**, **fare calculation & cost optimization**, and an **interactive Leaflet.js map**.
 
-![Architecture](https://img.shields.io/badge/ML-LightGBM-blue) ![API](https://img.shields.io/badge/API-FastAPI-green) ![Frontend](https://img.shields.io/badge/Frontend-Leaflet.js-orange)
+![Architecture](https://img.shields.io/badge/ML-LightGBM-blue) ![API](https://img.shields.io/badge/API-FastAPI-green) ![Transit](https://img.shields.io/badge/Network-Bus%20%2B%20Metro-purple) ![Frontend](https://img.shields.io/badge/Frontend-Leaflet.js-orange)
 
-## Architecture
+---
+
+## 🌟 Key Features
+
+1. **Multi-Modal Journey Planning (`mixed`)**:
+   - Computes pure **Bus-Only**, pure **Metro-Only**, and smart **Bus + Metro** mixed journeys.
+   - Models inter-modal transfers (walk connections < 500m between bus stops and metro stations, with headway penalties).
+
+2. **Smart Optimization Modes**:
+   - ⚡ **Fastest**: Minimizes end-to-end journey time (takes traffic and metro speed into account).
+   - 💰 **Cheapest**: Highlights the most economical transit option (bus fares starting at ₹5 vs metro slabs).
+   - 🔄 **Fewest Transfers**: Heavy penalty on mode switches and line changes for the smoothest commute.
+
+3. **Fare Engine**:
+   - **Delhi Metro**: Official distance slab fares (₹10, ₹20, ₹30, ₹40, ₹50, ₹60).
+   - **DTC / Cluster Buses**: Non-AC (₹5, ₹10, ₹15) and AC (₹10, ₹15, ₹25) distance-tier fares.
+
+4. **ML-Powered Bus ETAs**:
+   - LightGBM regressor predicting segment-level bus travel times based on time-of-day, day-of-week, historical speed ratios, and live GPS feeds.
+
+5. **Live Congestion & Transit Overlay**:
+   - Interactive Leaflet map displaying live traffic congestion levels on bus routes (green/orange/red) alongside colored Delhi Metro lines (Yellow, Violet, Blue, Magenta).
+
+---
+
+## 🏛️ Architecture
 
 ```
-GPS Traces + GTFS ──► data_pipeline.py ──► Segment Travel Times
-                                               │
-                                               ▼
-                                          model.py (LightGBM ETA)
-                                               │
-                                               ▼
-                                          router.py (Dijkstra + Transfers)
-                                               │
-                                               ▼
-                                          app.py (FastAPI Backend)
-                                               │
-                                    ┌──────────┴──────────┐
-                                    ▼                     ▼
-                              index.html            /plan-journey API
-                           (Leaflet.js Map)
+GTFS Schedules + GPS Traces ──► data_pipeline.py ──► Bus Segments + Metro Lines
+                                                            │
+                                                            ▼
+                                                       model.py (LightGBM Bus ETA)
+                                                            │
+                                                            ▼
+                                                       router.py (Multi-Modal DiGraph + Dijkstra)
+                                                            │
+                                                            ▼
+                                                       app.py (FastAPI Backend)
+                                                            │
+                                               ┌────────────┴────────────┐
+                                               ▼                         ▼
+                                         index.html              /plan-all-options
+                                      (Interactive Map)           /plan-journey
 ```
 
-## Features
+---
 
-- **GTFS Data Pipeline** — Parses standard GTFS feeds into stop-to-stop segments, snaps raw GPS pings to compute observed travel times
-- **LightGBM ETA Model** — Combines historical hour/day baselines with recent live GPS speeds for accurate bus travel time prediction
-- **Multi-Modal Transit Router** — NetworkX DiGraph with transit edges, same-stop route transfers, and walking transfers (< 400m) using Time-Dependent Dijkstra
-- **Real-Time Congestion** — Live speed ingestion via `/ingest-live-speed` endpoint dynamically adjusts ETAs
-- **Interactive Map** — Dark-themed Leaflet.js UI with click-to-route, congestion color overlays, and step-by-step journey legs
-
-## Quick Start
+## 🚀 Quick Start
 
 ```bash
-# Clone the repo
-git clone https://github.com/<your-username>/delhi-bus-router.git
-cd delhi-bus-router
+# 1. Clone repository
+git clone https://github.com/RoshankumarOG/transport-transitflow-delhi.git
+cd transport-transitflow-delhi
 
-# Install dependencies
+# 2. Install dependencies
 pip install -r requirements.txt
 
-# Start the API server (auto-generates sample Delhi data on first run)
+# 3. Launch FastAPI backend (automatically initializes GTFS + sample data)
 uvicorn app:app --reload
 
-# Open index.html in your browser and click two points on the Delhi map!
+# 4. Open index.html in your browser
+# Click any origin and destination in Delhi, then click "Compare All Options"!
 ```
 
-## API Endpoints
+---
+
+## 📡 API Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/plan-journey` | Plan an optimal bus route between two coordinates |
-| `POST` | `/ingest-live-speed` | Update real-time segment speeds from GPS/GTFS-RT |
-| `GET` | `/segments-status` | Get all segments with congestion levels for map overlay |
+| `POST` | `/plan-journey` | Plan optimal route with given mode (`bus`, `metro`, `mixed`) and optimization (`fastest`, `cheapest`, `least_transfers`) |
+| `POST` | `/plan-all-options` | Returns Bus-only, Metro-only, and Mixed route options simultaneously with ETAs, fares, and badges (`⚡ Fastest`, `💰 Cheapest`) |
+| `POST` | `/ingest-live-speed` | Ingest real-time segment speeds from GPS or GTFS-RT feed |
+| `GET` | `/segments-status` | Get bus segment speeds and congestion levels (`free_flow`, `moderate`, `heavy`) |
+| `GET` | `/metro-lines` | Returns Delhi Metro lines with station coordinates and line colors |
+| `GET` | `/metro-stations` | Returns all metro stations with lines and positions |
 
-### Example: Plan a Journey
+### Example Request (`POST /plan-all-options`)
 
 ```bash
-curl -X POST http://127.0.0.1:8000/plan-journey \
+curl -X POST http://127.0.0.1:8000/plan-all-options \
   -H "Content-Type: application/json" \
   -d '{
     "origin_lat": 28.6675,
@@ -70,42 +95,40 @@ curl -X POST http://127.0.0.1:8000/plan-journey \
   }'
 ```
 
-## Validation
+---
 
-Run the benchmark script to see MAE/MAPE on held-out test data and corridor comparisons vs Google Maps:
+## 📊 Benchmarks & Validation
+
+Run the benchmark script:
 
 ```bash
 python evaluate.py
 ```
 
-## Using Real Delhi Data
+### Corridor Comparison (Morning Peak - 9 AM)
 
-1. Drop official **Delhi OTD GTFS** files (`stops.txt`, `routes.txt`, `trips.txt`, `stop_times.txt`) into `data/gtfs/`
-2. Format historical GPS logs as CSV: `vehicle_id, route_id, timestamp, lat, lon, speed_kmph`
-3. Delete `artifacts/eta_model.joblib` so the model retrains on next server start
-4. Connect your live GTFS-RT feed to `POST /ingest-live-speed` every 30–60 seconds
+| Corridor | Bus ETA | Metro ETA | Mixed ETA | Bus Fare | Metro Fare |
+|---|---|---|---|---|---|
+| Kashmiri Gate → Nehru Place | 46.5 min | 32.0 min | **30.5 min** ⚡ | ₹15 (Non-AC) 💰 | ₹40 |
+| Connaught Place → Hauz Khas | 37.2 min | **18.0 min** ⚡ | 18.0 min | ₹10 (Non-AC) 💰 | ₹30 |
+| ITO → Nehru Place | 28.4 min | 24.0 min | **22.0 min** ⚡ | ₹10 (Non-AC) 💰 | ₹30 |
 
-## Project Structure
+---
 
-```
+## 📁 Project Structure
+
+```text
 delhi-bus-router/
-├── requirements.txt      # Python dependencies
-├── data_pipeline.py      # GTFS parsing, GPS snapping, segment travel times
-├── model.py              # Historical baseline + LightGBM ETA predictor
-├── router.py             # Transit graph, transfer edges, Dijkstra planner
-├── app.py                # FastAPI backend (/plan-journey)
-├── evaluate.py           # Validation: MAE, MAPE & Google Maps comparison
-└── index.html            # Interactive Leaflet.js demo map
+├── requirements.txt      # Python dependencies (FastAPI, LightGBM, NetworkX, etc.)
+├── data_pipeline.py      # GTFS processing, GPS snapping, Metro network & fare rules
+├── model.py              # Historical baseline + LightGBM travel-time model
+├── router.py             # Multi-modal transit graph, transfer edges, Dijkstra solver
+├── app.py                # FastAPI server (/plan-journey, /plan-all-options, /metro-lines)
+├── evaluate.py           # Model MAE/MAPE validation & multi-modal comparisons
+├── index.html            # Interactive Leaflet.js demo UI (Bus + Metro overlay)
+└── README.md             # Project documentation
 ```
 
-## Tech Stack
-
-- **ML**: LightGBM, scikit-learn, pandas, NumPy
-- **Routing**: NetworkX (Dijkstra), SciPy (cKDTree spatial indexing)
-- **Backend**: FastAPI, Uvicorn, Pydantic
-- **Frontend**: Leaflet.js, CARTO dark basemap
-- **Data**: GTFS standard, GPS traces with Haversine distance
-
-## License
+## 📜 License
 
 MIT
