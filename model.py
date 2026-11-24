@@ -1,7 +1,12 @@
 import joblib
 import numpy as np
 import pandas as pd
-import lightgbm as lgb
+
+# Safe import for serverless environments (e.g. Vercel) where libgomp.so.1 may be missing
+try:
+    import lightgbm as lgb
+except (ImportError, OSError):
+    lgb = None
 
 class TrafficETAModel:
     def __init__(self):
@@ -44,14 +49,17 @@ class TrafficETAModel:
         feat_df = self.prepare_features(obs_df, self.hist_lookup)
         features = ["segment_code", "hour", "day_of_week", "distance_m", "hist_travel_time", "recent_live_speed", "speed_ratio"]
 
-        self.model = lgb.LGBMRegressor(
-            n_estimators=200,
-            learning_rate=0.05,
-            num_leaves=31,
-            random_state=42,
-            verbose=-1
-        )
-        self.model.fit(feat_df[features], feat_df["travel_time_sec"])
+        if lgb is not None:
+            self.model = lgb.LGBMRegressor(
+                n_estimators=200,
+                learning_rate=0.05,
+                num_leaves=31,
+                random_state=42,
+                verbose=-1
+            )
+            self.model.fit(feat_df[features], feat_df["travel_time_sec"])
+        else:
+            self.model = None
 
     def predict_segments(self, segments_df, hour, day_of_week, live_speeds_map=None):
         """Returns predicted travel_time_sec and congestion level for all segments."""
@@ -79,6 +87,7 @@ class TrafficETAModel:
             df["pred_speed_kmph"] < 12.0, "heavy",
             np.where(df["pred_speed_kmph"] < 20.0, "moderate", "free_flow")
         )
+
         return df
 
     def save(self, path="artifacts/eta_model.joblib"):
