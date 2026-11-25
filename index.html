@@ -1,5 +1,66 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en"><!-- TransitFlow Enhancements: Bus Color #f59e0b, Comparison Banner, Badges -->
+<style>
+  :root { --bus-color: #f59e0b; }
+  .badge-cheapest { background-color: #10b981 !important; color: #ffffff !important; padding: 3px 8px; border-radius: 12px; font-weight: 700; font-size: 0.75rem; margin-left: 6px; display: inline-block; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+  .badge-fastest { background-color: #3b82f6 !important; color: #ffffff !important; padding: 3px 8px; border-radius: 12px; font-weight: 700; font-size: 0.75rem; margin-left: 6px; display: inline-block; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+  .comparison-banner-container { background: #1e293b; border: 2px solid #f59e0b; border-radius: 10px; padding: 14px 18px; margin: 15px 0; color: #f8fafc; font-family: inherit; box-shadow: 0 4px 15px rgba(245, 158, 11, 0.2); }
+  .comparison-banner-title { font-weight: 700; font-size: 1rem; color: #f59e0b; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+  .comparison-banner-item { font-size: 0.9rem; margin: 4px 0; color: #e2e8f0; }
+  .comparison-banner-diff { font-weight: 700; font-size: 0.92rem; margin-top: 8px; padding-top: 8px; border-top: 1px solid #334155; color: #38bdf8; }
+</style>
+<script>
+  window.BUS_ROUTE_COLOR = "#f59e0b";
+  document.addEventListener("DOMContentLoaded", function() {
+    if (window.L && L.Polyline) {
+      const origInit = L.Polyline.prototype.initialize;
+      L.Polyline.prototype.initialize = function(latlngs, options) {
+        if (options && (options.mode === 'bus' || options.color === 'blue' || options.color === '#ff7800' || (options.className && options.className.includes('bus')))) {
+          options.color = '#f59e0b';
+        }
+        return origInit.call(this, latlngs, options);
+      };
+    }
+
+    window.renderRouteComparisonAndBadges = function(routesList) {
+      if (!routesList || !routesList.length) return;
+      let cheapestRoute = routesList[0];
+      let fastestRoute = routesList[0];
+      routesList.forEach(r => {
+        let fare = r.total_fare_inr || r.fare || r.price || 0;
+        let time = r.total_time_min || r.time || r.duration || 0;
+        let cFare = cheapestRoute.total_fare_inr || cheapestRoute.fare || cheapestRoute.price || 0;
+        let fTime = fastestRoute.total_time_min || fastestRoute.time || fastestRoute.duration || 0;
+        if (fare < cFare) cheapestRoute = r;
+        if (time < fTime) fastestRoute = r;
+      });
+
+      const cheapestFare = cheapestRoute.total_fare_inr || cheapestRoute.fare || cheapestRoute.price || 0;
+      const cheapestTime = cheapestRoute.total_time_min || cheapestRoute.time || cheapestRoute.duration || 0;
+      const fastestFare = fastestRoute.total_fare_inr || fastestRoute.fare || fastestRoute.price || 0;
+      const fastestTime = fastestRoute.total_time_min || fastestRoute.time || fastestRoute.duration || 0;
+
+      const priceDiff = Math.abs(fastestFare - cheapestFare);
+      const timeDiff = Math.abs(cheapestTime - fastestTime);
+
+      let bannerDiv = document.getElementById('route-comparison-banner');
+      if (!bannerDiv) {
+        bannerDiv = document.createElement('div');
+        bannerDiv.id = 'route-comparison-banner';
+        bannerDiv.className = 'comparison-banner-container';
+        const targetContainer = document.getElementById('results-list') || document.getElementById('results') || document.body;
+        targetContainer.prepend(bannerDiv);
+      }
+
+      bannerDiv.innerHTML = `
+        <div class="comparison-banner-title">⚡ Route Comparison Summary</div>
+        <div class="comparison-banner-item">🏷️ <strong>Cheapest Route:</strong> ${cheapestRoute.mode_name || cheapestRoute.mode || 'Cheapest Option'} (₹${cheapestFare}, ${cheapestTime} mins)</div>
+        <div class="comparison-banner-item">⏱️ <strong>Fastest Route:</strong> ${fastestRoute.mode_name || fastestRoute.mode || 'Fastest Option'} (₹${fastestFare}, ${fastestTime} mins)</div>
+        <div class="comparison-banner-diff">Exact Difference: ₹${priceDiff} price difference | ${timeDiff} mins time difference</div>
+      `;
+    };
+  });
+</script>
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
