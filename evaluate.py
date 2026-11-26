@@ -29,7 +29,7 @@ def run_benchmark():
     mae_min = mean_absolute_error(test_df["travel_time_sec"] / 60.0, test_df["pred_sec"] / 60.0)
     mape_pct = mean_absolute_percentage_error(test_df["travel_time_sec"], test_df["pred_sec"]) * 100.0
 
-    print("=== HELD-OUT ACTUAL BUS TRIPS BENCHMARK ===")
+    print("=== HELD-OUT SYNTHETIC BUS TRIPS BENCHMARK ===")
     print(f"Test Samples : {len(test_df)} segment traversals")
     print(f"MAE          : {mae_min:.2f} minutes")
     print(f"MAPE         : {mape_pct:.2f}%\n")
@@ -64,7 +64,7 @@ def run_benchmark():
             "Google_Maps_Car_Min": 22.0
         },
     ])
-    print("=== MULTI-MODAL CORRIDOR COMPARISON (BUS vs METRO vs MIXED vs GOOGLE MAPS) ===")
+    print("=== ILLUSTRATIVE CORRIDOR COMPARISON (NOT LIVE MEASUREMENTS) ===")
     print(corridors.to_string(index=False))
 
     # Multi-Modal Router Verification
@@ -78,4 +78,6 @@ def run_benchmark():
         print(f"[{opt['option_label']}] ETA: {opt['total_eta_min']}m | Transfers: {opt['transfers']} | Fare: ₹{opt['fare']['total_fare_min']}–₹{opt['fare']['total_fare_max']} | Tags: {opt.get('tags', [])}")
 
 if __name__ == "__main__":
+    import sys
+    sys.stdout.reconfigure(encoding="utf-8")
     run_benchmark()
