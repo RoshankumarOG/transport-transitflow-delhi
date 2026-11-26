@@ -1,24 +1,12 @@
 {
-  "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "/api/index.py"
-    },
-    {
-      "source": "/plan-(.*)",
-      "destination": "/api/index.py"
-    },
-    {
-      "source": "/segments-status",
-      "destination": "/api/index.py"
-    },
-    {
-      "source": "/metro-(.*)",
-      "destination": "/api/index.py"
-    },
-    {
-      "source": "/ingest-live-speed",
-      "destination": "/api/index.py"
-    }
+  "builds": [
+    { "src": "index.html", "use": "@vercel/static" },
+    { "src": "planner.js", "use": "@vercel/static" },
+    { "src": "api/index.py", "use": "@vercel/python", "config": { "includeFiles": "network/*.csv.gz" } }
+  ],
+  "routes": [
+    { "src": "/", "dest": "/index.html" },
+    { "handle": "filesystem" },
+    { "src": "/(.*)", "dest": "/api/index.py" }
   ]
 }

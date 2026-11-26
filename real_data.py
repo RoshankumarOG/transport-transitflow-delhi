@@ -8,6 +8,13 @@ SOURCE = 'https://github.com/reclaimchennai/India_GTFS/tree/main/delhi'
 
 def load_feed(mode):
     folder = ROOT / mode
+    if not (folder / 'stop_times.txt').is_file():
+        network = Path(__file__).parent / 'network'
+        stops = pd.read_csv(network / f'{mode}-stops.csv.gz')
+        segments = pd.read_csv(network / f'{mode}-segments.csv.gz', dtype={'route_short_name': str})
+        segments['pred_travel_time_sec'] = segments.travel_time_sec
+        segments['congestion'] = 'unknown'
+        return stops, segments
     stops = pd.read_csv(folder / 'stops.txt', dtype={'stop_id': str})
     routes = pd.read_csv(folder / 'routes.txt', dtype={'route_id': str}).fillna('')
     trips = pd.read_csv(folder / 'trips.txt', dtype=str).fillna('')

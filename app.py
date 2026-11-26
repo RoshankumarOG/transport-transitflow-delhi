@@ -18,6 +18,8 @@ COLORS = {'Yellow':'#c5aa29','Blue':'#578ebc','Violet':'#9071a9','Magenta':'#bd6
 @app.on_event('startup')
 def startup_event():
     global transit_router, segments_df, metro_stations_df, metro_segments_df
+    if transit_router is not None:
+        return
     stops, segments_df, metro_stations_df, metro_segments_df, interchanges = load_network()
     transit_router = TransitRouter(stops, segments_df, metro_stations_df, metro_segments_df, interchanges)
 
