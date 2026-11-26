@@ -1,5 +1,6 @@
 """Run with the local server on port 8001. No test framework required."""
 import json
+import re
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 from live_data import normalize
@@ -15,6 +16,12 @@ def main():
     for path, marker in [('/', b'href="/planner"'), ('/planner', b'src="/planner.js"')]:
         with urlopen(BASE + path) as response:
             assert marker in response.read(), path
+    with urlopen(BASE + '/planner') as page, urlopen(BASE + '/planner.js') as script:
+        html = page.read().decode()
+        required = set(re.findall(r"\$\('([\w-]+)'\)", script.read().decode()))
+        missing = required - set(re.findall(r'\bid="([\w-]+)"', html))
+        assert not missing, f'Planner elements missing from HTML: {sorted(missing)}'
+        assert 'data-from="Connaught Place" data-to="Hauz Khas"' in html
     counts = call('/data-status')
     assert counts['bus_stops'] > 6000 and counts['metro_stations'] > 250
     assert len(call('/stops')) > 6500

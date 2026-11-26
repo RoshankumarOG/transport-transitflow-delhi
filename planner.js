@@ -1,7 +1,6 @@
 const $ = id => document.getElementById(id);
 const places = new Map();
-const presets = [['Kashmiri Gate ISBT','Nehru Place'],['Connaught Place','Hauz Khas'],['ITO','Nehru Place']];
-const landmarks = {'Kashmiri Gate ISBT':[28.6675,77.2282],'Connaught Place':[28.6315,77.2167],'ITO':[28.6289,77.2405],'Hauz Khas':[28.5494,77.2001],'Nehru Place':[28.5491,77.2533]};
+const landmarks = {'Kashmiri Gate ISBT':[28.6675,77.2282],'Connaught Place':[28.6315,77.2167],'ITO':[28.6289,77.2405],'Hauz Khas':[28.5494,77.2001],'Nehru Place':[28.5491,77.2533],'Dwarka Sec 21':[28.552322,77.056198],'Noida City Centre':[28.574593,77.356117]};
 const labels = {fastest:'Fastest journey',cheapest:'Lower fare',least_transfers:'Fewer transfers',bus:'Bus only',metro:'Metro only',mixed:'Bus + Metro'};
 const escapeHTML = value => String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let mode='mixed', requestId=0, controller, options=[], map, pins, routeLayer, metroLayer, stopLayer, allStops=[], activeField='origin', timer;
@@ -31,6 +30,6 @@ $('swap').onclick=()=>{[$('origin').value,$('destination').value]=[$('destinatio
 $('reset').onclick=()=>{clearTimeout(timer);clearResults();$('origin').value='';$('destination').value='';activeField='origin';showPins();recenter();status('Choose a starting point and destination.')};$('fit').onclick=recenter;
 $('locate').onclick=()=>{if(!navigator.geolocation){status('Location is not supported. Choose a stop instead.',true);return}status('Waiting for location permission…');navigator.geolocation.getCurrentPosition(p=>{setPoint('origin',{lat:p.coords.latitude,lng:p.coords.longitude},'My location');map?.setView([p.coords.latitude,p.coords.longitude],14)},()=>status('Location unavailable. Search a stop or choose it on the map.',true),{timeout:10000,maximumAge:60000})};
 $('metroOverlay').onchange=()=>{if(map)$('metroOverlay').checked?metroLayer.addTo(map):map.removeLayer(metroLayer)};$('busOverlay').onchange=drawVehicles;$('stopOverlay').onchange=()=>{if(map&&$('stopOverlay').checked&&map.getZoom()<13)map.setZoom(13);drawStops()};
-document.querySelectorAll('[data-preset]').forEach(b=>b.onclick=()=>{Object.entries(landmarks).forEach(([name,p])=>places.set(name,p));[$('origin').value,$('destination').value]=presets[Number(b.dataset.preset)];showPins();plan()});
+document.querySelectorAll('[data-from][data-to]').forEach(b=>b.onclick=()=>{Object.entries(landmarks).forEach(([name,p])=>places.set(name,p));[$('origin').value,$('destination').value]=[b.dataset.from,b.dataset.to];showPins();plan()});
 setInterval(refreshVehicles,30000);setInterval(drawVehicles,15000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshVehicles()});
 initialize();
