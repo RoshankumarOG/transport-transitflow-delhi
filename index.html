@@ -9,17 +9,14 @@
 <style>
 :root{--ink:#183c37;--muted:#687b74;--green:#235e4b;--lime:#d9ed9b;--paper:#f7f8f2;--line:#dfe5dc;--card:#ffffff;--shadow:0 12px 32px rgba(24,60,55,.08);--radius:16px;--font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
 .hero{padding:30px 0;grid-template-columns:1fr}.hero h1{font-size:40px;margin:10px 0;letter-spacing:-.03em}.hero p{max-width:680px;margin:0 auto;color:var(--muted);font-size:18px}
-
 .examples{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:0 0 18px}.examples>span{font-size:13px;color:var(--muted);font-weight:600}
 </style>
 </head>
 <body>
 <header><nav class="nav" aria-label="Main navigation"><a class="brand" href="/" aria-label="TransitFlow homepage"><b>transitflow</b></a></nav></header>
 <main class="wrap">
-<section id="planner"><div class="section-top"><div><h1 style="font-size:clamp(32px,4vw,48px);letter-spacing:-.03em;margin:0 0 8px">Delhi Transit Planner</h1><p>Compare bus and metro paths across the capital network.</p></div></div>
-<div class="examples"><span>Try a journey</span><div class="presets"><button class="preset" data-from="362" data-to="2084">Connaught Place → Hauz Khas</button><button class="preset" data-from="757" data-to="1451">Dwarka Sec 21 → Noida City Centre</button></div></div>
-
-<section class="results" id="results" tabindex="-1" hidden aria-label="Journey results"><h3 id="resultsTitle">Option details</h3><div class="result-cards" id="resultCards"></div></section>
+<section id="planner"><div class="section-top"><div><h1 style="font-size:clamp(32px,4vw,48px);letter-spacing:-.03em;margin:0 0 8px">Delhi Transit Planner</h1><p>Compare bus and metro paths across the capital network.</p></div></div><div class="examples"><span>Try a journey</span><div class="presets"><button class="preset" data-from="362" data-to="2084">Connaught Place → Hauz Khas</button><button class="preset" data-from="757" data-to="1451">Dwarka Sec 21 → Noida City Centre</button></div></div><div class="planner"><form id="journeyForm" class="controls"><h3>Plan your journey</h3><div class="locations"><label class="field" for="origin">From</label><input id="origin" list="stops" placeholder="Search a bus stop or metro station" autocomplete="off" required><button id="swap" class="swap" type="button" aria-label="Swap origin and destination">⇄</button><label class="field" for="destination">To</label><input id="destination" list="stops" placeholder="Where do you want to go?" autocomplete="off" required></div><datalist id="stops"></datalist><button type="button" class="text-button" id="locate">Use my location</button><details class="options"><summary>Journey options</summary><span class="field" id="modeLabel">Travel by</span><div class="segments" role="group" aria-labelledby="modeLabel"><button type="button" data-mode="mixed" aria-pressed="true">Bus + Metro</button><button type="button" data-mode="metro" aria-pressed="false">Metro only</button><button type="button" data-mode="bus" aria-pressed="false">Bus only</button></div><label class="field" for="preference">What matters most?</label><select id="preference"><option value="fastest">Fastest journey</option><option value="cheapest">Lowest estimated fare</option><option value="least_transfers">Fewest transfers</option></select></details><button class="button" id="find" type="submit">Find my route <span aria-hidden="true">→</span></button><div class="secondary-actions"><a id="viewResults" href="#results" hidden>View routes ↓</a><button type="button" class="text-button" id="reset">Clear journey</button></div><p class="status" id="status" role="status" aria-live="polite">Choose a starting point and destination. We'll do the rest.</p></form><div class="map-area"><div class="map-toolbar"><span>Explore the network</span><div class="toggles"><label><input type="checkbox" id="metroOverlay" checked>Metro</label><label><input type="checkbox" id="busOverlay">Live buses</label><label><input type="checkbox" id="stopOverlay">Stops</label><button type="button" class="text-button" id="fit">Recenter</button></div></div><div id="map" aria-label="Interactive Delhi transit map"></div><div class="feed-status" id="feedStatus" role="status">Connecting to the public bus feed...</div><div class="legend"><span><i style="background:#c5aa29"></i>Yellow</span><span><i style="background:#578ebc"></i>Blue</span><span><i style="background:#9071a9"></i>Violet</span><span><i style="background:#e3514a"></i>Red</span><span><i style="background:#519b59"></i>Green</span><span><i style="background:#e88537"></i>Magenta</span><span><i style="background:#a5a7aa"></i>Grey</span><span><i style="background:#e094b9"></i>Pink</span><span><i style="background:#e4b232"></i>Orange</span><span><i style="background:#3f51b5"></i>Aqua</span></div></div></div>
+<section class="results" id="results" tabindex="-1" hidden aria-label="Journey results"><h3 id="resultTitle">Option details</h3><div class="result-cards" id="resultCards"></div></section>
 <details id="dataInfo"><summary>Where does the data come from?</summary><p id="networkInfo">Loading data stats...</p></details></section>
 </main><footer><div class="wrap footer-inner"><span><b>transitflow</b> / A better way through Delhi</span></div></footer>
 <script src="/planner.js"></script>
@@ -35,23 +32,7 @@
   z-index: 99999;
   transform: translate(-50%, -50%);
   opacity: 0;
-  transition: opacity 0.15s;
 }
 </style>
-<div id="inv-cursor"></div>
-<script>
-document.addEventListener('mousemove', function(e) {
-  var el = document.getElementById('inv-cursor');
-  if (el) {
-    el.style.left = e.clientX + 'px';
-    el.style.top = e.clientY + 'px';
-    el.style.opacity = '1';
-  }
-});
-document.addEventListener('mouseleave', function() {
-  var el = document.getElementById('inv-cursor');
-  if (el) el.style.opacity = '0';
-});
-</script>
 </body>
 </html>
