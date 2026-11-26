@@ -1,7 +1,5 @@
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-import os
-from urllib.parse import urlencode
 from functools import lru_cache
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, RedirectResponse
@@ -31,10 +29,6 @@ def read_root():
 
 @app.get('/landing-map')
 def landing_map():
-    key = os.getenv('GOOGLE_MAPS_EMBED_API_KEY', '').strip()
-    if key:
-        query = urlencode(dict(key=key, center='28.632,77.219', zoom=12))
-        return RedirectResponse('https://www.google.com/maps/embed/v1/view?' + query)
     return RedirectResponse('https://www.openstreetmap.org/export/embed.html?bbox=77.13,28.58,77.31,28.69&layer=mapnik')
 
 @app.get('/planner')

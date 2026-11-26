@@ -45,8 +45,7 @@ No personal API key is required. Live tracking and map tiles need internet acces
 ## Verify the demo
 
 With the server running, run `.\.venv\Scripts\python.exe smoke_test.py` from another terminal. It checks the real network counts, all three modes and preferences, invalid inputs, and the expiry of stale vehicle reports. The [local API explorer](http://127.0.0.1:8001/docs) lets you inspect the responses used by the map.
-## Landing-page map
 
-Open `/` for the Delhi street map or `/planner` to plan a journey. The landing page uses OpenStreetMap by default.
+## Maps
 
-To use Google Maps, enable the Maps Embed API in your Google Cloud project. Restrict the browser key to that API and your website’s HTTP referrer. Set `GOOGLE_MAPS_EMBED_API_KEY` in the Vercel project's Production environment variables and redeploy. The embed sends this browser key to visitors. [Google Maps Embed setup](https://developers.google.com/maps/documentation/embed/get-api-key)
+Open `/` to explore central Delhi or `/planner` to compare journeys. Both maps use OpenStreetMap and require no API key. The planner displays routes, stops and vehicle reports using Leaflet.
