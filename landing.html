@@ -8,33 +8,33 @@
     * { box-sizing: border-box }
     body { margin: 0; color: #183c37; background: #f7f8f2; font: 1rem/1.6 "Segoe UI", Arial, sans-serif }
     header, main { width: min(1180px, 90%); margin: auto }
-    header { padding: 1.2rem 0; border-bottom: 1px solid #d6ded2; display: flex; align-items: baseline; gap: .75rem }
+    header { padding: 1.2rem 0; border-bottom: 1px solid #d6ded2; display: flex; align-items: baseline; gap: 1rem }
     header strong { font-size: 1.5rem; letter-spacing: -.06em }
     header span, figcaption { font-size: .8rem }
-    main { display: grid; grid-template-columns: 1fr 1.15fr; gap: 5%; align-items: center; padding: clamp(3rem,9vw,8rem) 0 }
-    h1 { margin: 0; font-size: clamp(3rem,6vw,5.7rem); line-height: 1.03; letter-spacing: -.065em }
+    main { display: grid; grid-template-columns: 1fr 1.15fr; gap: 5%; align-items: center; padding: 4rem 0 }
+    h1 { margin: 0; font-size: clamp(3rem,6vw,5.7rem); line-height: 1.03; letter-spacing: -.06em }
     h1 em { color: #50734d; font-family: Georgia, serif; font-weight: 400 }
     p { max-width: 36ch; margin: 1.5rem 0 2rem; color: #485e54; font-size: 1.12rem }
-    a { display: inline-block; background: #235e4b; color: white; border-radius: .5rem; padding: .8rem 1.25rem; text-decoration: none; font-weight: 600 }
+    a { display: inline-block; background: #235e4b; color: white; border-radius: .5rem; padding: .8rem 1.4rem; text-decoration: none; font-weight: 600 }
     a:hover { background: #173e32 }
     :focus-visible { outline: 3px solid #ab701d; outline-offset: 4px }
     figure { margin: 0 }
-    iframe { display: block; width: 100%; height: clamp(320px,51vh,540px); border: 1px solid #c5d1c1; border-radius: 1rem; background: #e6ecdf }
+    iframe { display: block; width: 100%; height: clamp(320px,51vh,540px); border: 1px solid #c5d4c1; border-radius: 1rem }
     figcaption { margin: .5rem .25rem; color: #485e54 }
     @media (max-width: 760px) { main { grid-template-columns: 1fr; gap: 2rem } }
   </style>
 </head>
 <body>
-  <header><strong>transitflow</strong><span>Delhi</span></header>
+  <header><strong>transitflow</strong><span>Delhi</span><span>by Roshan Kumar</span></header>
   <main>
     <section>
       <h1>Across Delhi by <em>bus and metro.</em></h1>
-      <p>Choose two stops to compare journey times, estimated fares and transfers across Delhi’s transit network.</p>
+      <p>Choose two stops to compare journey times, estimated fares and transfers across Delhi's multimodal transit network.</p>
       <a href="/planner">Plan a journey <span aria-hidden="true">→</span></a>
     </section>
     <figure>
-      <iframe title="Interactive street map of central Delhi" src="https://www.openstreetmap.org/export/embed.html?bbox=77.13,28.58,77.31,28.69&amp;layer=mapnik" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
-      <figcaption>Explore central Delhi. Drag to pan or use the map controls to zoom.</figcaption>
+      <iframe title="Interactive street map of central Delhi" src="https://www.openstreetmap.org/export/embed.html?bbox=77.13,28.58,77.27,28.67&layer=mapnik"></iframe>
+      <figcaption>Map view of central Delhi transit network</figcaption>
     </figure>
   </main>
 </body>
