@@ -104,21 +104,18 @@ class TransitRouter:
             for stop_id, r_list in scored_bus_segments_df.groupby("stop_id_to")["route_id"].unique().items():
                 stop_routes[stop_id] = np.unique(np.concatenate([stop_routes.get(stop_id, []), r_list]))
 
+            # Stop hubs avoid quadratic route-to-route edges on the full city network.
             for stop_id, r_list in stop_routes.items():
-                for r1 in r_list:
-                    for r2 in r_list:
-                        if r1 != r2:
-                            G.add_edge((stop_id, r1), (stop_id, r2),
-                                weight=BUS_TRANSFER_PENALTY_SEC, edge_type="bus_transfer",
-                                mode="walk", distance_m=0)
-
-            # Bus walking transfers (< 400m)
+                hub = (stop_id, None)
+                arrival = (stop_id, "walk_arrival")
+                for route in r_list:
+                    G.add_edge((stop_id, route), hub, weight=0, edge_type="bus_alight", mode="walk", distance_m=0)
+                    G.add_edge(arrival, (stop_id, route), weight=BUS_TRANSFER_PENALTY_SEC,
+                               edge_type="bus_transfer", mode="walk", distance_m=0)
+                G.add_edge(hub, arrival, weight=0, edge_type="bus_alight", mode="walk", distance_m=0)
             for s1, s2, walk_sec, dist in self.bus_transfer_pairs:
-                for r1 in stop_routes.get(s1, []):
-                    for r2 in stop_routes.get(s2, []):
-                        G.add_edge((s1, r1), (s2, r2),
-                            weight=walk_sec, edge_type="walk_transfer",
-                            mode="walk", distance_m=dist)
+                G.add_edge((s1, None), (s2, "walk_arrival"), weight=dist / WALK_SPEED_MPS,
+                           edge_type="walk_between_stops", mode="walk", distance_m=dist)
 
         # ── METRO EDGES ──
         if mode in ("metro", "mixed"):
@@ -189,19 +186,14 @@ class TransitRouter:
 
     def snap_point(self, lat, lon, k=5, max_m=1000, mode="mixed"):
         """Snap a lat/lon point to nearest stops/stations."""
-        dists, idxs = self.stop_tree.query(np.radians([[lat, lon]]), k=k)
-        results = []
-        for dist_rad, idx in zip(dists[0], idxs[0]):
-            dist_m = dist_rad * 6371000.0
-            if dist_m <= max_m:
-                stop_id = self.all_ids[idx]
-                stop_mode = self.all_modes[idx]
-                if mode == "bus" and stop_mode != "bus":
-                    continue
-                if mode == "metro" and stop_mode != "metro":
-                    continue
-                results.append((stop_id, dist_m, dist_m / WALK_SPEED_MPS, stop_mode))
-        return results
+        if mode == "mixed":
+            return self.snap_point(lat, lon, k, max_m, "bus") + self.snap_point(lat, lon, k, max_m, "metro")
+        mask = self.all_modes == mode
+        indices = np.flatnonzero(mask)
+        distances = haversine_m(lat, lon, self.all_points[indices, 0], self.all_points[indices, 1])
+        order = np.argsort(distances)[:k]
+        return [(self.all_ids[indices[i]], float(distances[i]), float(distances[i]) / WALK_SPEED_MPS,
+                 self.all_modes[indices[i]]) for i in order if distances[i] <= max_m]
 
     def _calculate_journey_fare(self, legs):
         """Calculate total fare from journey legs."""
@@ -276,7 +268,8 @@ class TransitRouter:
                 dist_m = d.get("distance_m", 0.0)
                 time_s = d.get("weight", 0.0)
                 if edge_mode == "walk":
-                    cost = 0.0
+                    kind = d.get("edge_type")
+                    cost = 5.0 if kind in ("bus_transfer", "metro_to_bus", "walk_to_bus") else 10.0 if kind in ("bus_to_metro", "walk_to_metro") else 0.0
                 elif edge_mode == "bus":
                     # Non-AC Bus is ₹5-₹15, approx ₹1.0 per km + ₹5 boarding penalty
                     is_boarding = 5.0 if "transfer" in d.get("edge_type", "") else 0.0
@@ -291,18 +284,19 @@ class TransitRouter:
                 return (cost * 1000.0) + (time_s * 0.05)
 
         elif optimize == "least_transfers":
-            weight_fn = lambda u, v, d: d["weight"] + (3600 if "transfer" in d.get("edge_type", "") or "interchange" in d.get("edge_type", "") else 0)
+            weight_fn = lambda u, v, d: d["weight"] + (3600 if d.get("edge_type") in ("bus_transfer", "walk_transfer", "metro_interchange", "bus_to_metro", "metro_to_bus") else 0)
         else:  # fastest
             weight_fn = "weight"
 
         # Connect virtual ORIGIN and DESTINATION nodes
+        G = G.copy()
         G.add_node("ORIGIN")
         G.add_node("DEST")
 
         for stop_id, dist_m, walk_sec, stop_mode in orig_snaps:
             initial_wait = 180 if stop_mode == "bus" else METRO_HEADWAY_SEC
             for node in list(G.nodes):
-                if isinstance(node, tuple) and node[0] == stop_id:
+                if isinstance(node, tuple) and node[0] == stop_id and node[1] not in (None, "walk_arrival"):
                     G.add_edge("ORIGIN", node,
                         weight=walk_sec + initial_wait,
                         edge_type=f"walk_to_{stop_mode}",
@@ -310,7 +304,7 @@ class TransitRouter:
 
         for stop_id, dist_m, walk_sec, stop_mode in dest_snaps:
             for node in list(G.nodes):
-                if isinstance(node, tuple) and node[0] == stop_id:
+                if isinstance(node, tuple) and node[0] == stop_id and node[1] not in (None, "walk_arrival"):
                     G.add_edge(node, "DEST",
                         weight=walk_sec,
                         edge_type=f"walk_from_{stop_mode}",
@@ -344,7 +338,7 @@ class TransitRouter:
                 label = edge.get("route_name", "Metro")
                 icon = "🚇"
             elif edge_mode == "bus":
-                label = "Bus " + edge.get("route_name", "")
+                label = "Bus " + str(edge.get("route_name", ""))
                 icon = "🚌"
             else:
                 if "metro" in edge_type:
@@ -379,7 +373,7 @@ class TransitRouter:
 
         return {
             "total_eta_min": round(total_sec / 60.0, 1),
-            "transfers": sum(1 for l in legs if "transfer" in l["type"] or "interchange" in l["type"]),
+            "transfers": sum(1 for l in legs if l["type"] in ("bus_transfer", "walk_transfer", "metro_interchange", "bus_to_metro", "metro_to_bus")),
             "modes_used": modes_used,
             "fare": fare_info,
             "legs": legs,

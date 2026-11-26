@@ -29,3 +29,7 @@ Thumbs.db
 
 # Jupyter
 .ipynb_checkpoints/
+
+.python/
+.uv-cache/
+*.log
