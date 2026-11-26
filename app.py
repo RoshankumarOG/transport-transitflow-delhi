@@ -1,8 +1,10 @@
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+import os
+from urllib.parse import urlencode
 from functools import lru_cache
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel, Field
 from typing import Literal
 from real_data import load_network, SOURCE
@@ -25,6 +27,18 @@ def startup_event():
 
 @app.get('/')
 def read_root():
+    return FileResponse(ROOT / 'landing.html')
+
+@app.get('/landing-map')
+def landing_map():
+    key = os.getenv('GOOGLE_MAPS_EMBED_API_KEY', '').strip()
+    if key:
+        query = urlencode(dict(key=key, center='28.632,77.219', zoom=12))
+        return RedirectResponse('https://www.google.com/maps/embed/v1/view?' + query)
+    return RedirectResponse('https://www.openstreetmap.org/export/embed.html?bbox=77.13,28.58,77.31,28.69&layer=mapnik')
+
+@app.get('/planner')
+def planner_page():
     return FileResponse(ROOT / 'index.html')
 
 class JourneyRequest(BaseModel):

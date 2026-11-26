@@ -12,6 +12,9 @@ def call(path, body=None):
         return json.load(response)
 
 def main():
+    for path, marker in [('/', b'href="/planner"'), ('/planner', b'src="/planner.js"')]:
+        with urlopen(BASE + path) as response:
+            assert marker in response.read(), path
     counts = call('/data-status')
     assert counts['bus_stops'] > 6000 and counts['metro_stations'] > 250
     assert len(call('/stops')) > 6500
